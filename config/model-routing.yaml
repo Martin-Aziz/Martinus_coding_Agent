@@ -1,0 +1,87 @@
+# model-routing.yaml
+#
+# Per-phase model routing configuration for the Creator Coding Agent.
+#
+# The agent pipeline is split into three phases, each served by a named role:
+#   planner_model      — strategic reasoning / task decomposition
+#   implementer_model  — code generation / file editing
+#   reviewer_model     — critique, correctness checks, quality gating
+#
+# By default all three roles share the same model (uniform routing).
+# Set different models per role to apply specialised hardware capacity where
+# it matters most (see the commented "high-end" example at the bottom).
+#
+# NOTE: Role routing was disabled in the harness comparison reported in the
+# thesis. All phases used the same model (ornith-thesis-ctx32k) in that
+# evaluation. Role routing is available for future use as described above.
+# To force single-model mode, set:
+#   SINGLE_MODEL_MODE=true  (see orchestrator env config)
+
+default_provider: ollama
+
+providers:
+
+  # ── Ollama (local, default) ──────────────────────────────────────────────
+  # Ollama serves models as an OpenAI-compatible endpoint on port 11434.
+  # Pull a model with: ollama pull <model-name>
+  ollama:
+    base_url: http://127.0.0.1:11434
+
+    # Planning phase: interprets the user request, decomposes it into subtasks,
+    # and decides which files to touch. A mid-size instruction-tuned model
+    # (≥7 B parameters) with strong reasoning is recommended here.
+    planner_model: gemma4:latest
+
+    # Implementation phase: writes and edits source code. This is the most
+    # token-intensive phase; a code-specialised model (e.g. qwen2.5-coder,
+    # deepseek-coder) gives the best results. Larger context windows help.
+    implementer_model: gemma4:latest
+
+    # Review phase: reads the generated diff, checks for bugs, style issues,
+    # and logical errors, then produces a pass/fail verdict with comments.
+    # A model with strong instruction-following and critical reasoning is ideal.
+    reviewer_model: gemma4:latest
+
+  # ── LM Studio (local, alternative) ──────────────────────────────────────
+  # LM Studio exposes an OpenAI-compatible REST API on port 1234.
+  # Load a GGUF model in the LM Studio UI and start the local server, then
+  # set default_provider: lmstudio above to activate this section.
+  lmstudio:
+    base_url: http://127.0.0.1:1234
+
+    # Planning phase — replace "local-model" with the model name shown in the
+    # LM Studio server tab (e.g. "mistral-7b-instruct-v0.2").
+    planner_model: local-model
+
+    # Implementation phase — a code-focused GGUF (e.g. qwen2.5-coder-14b-Q4)
+    # works well here when enough VRAM is available.
+    implementer_model: local-model
+
+    # Review phase — can share the planner model or use a dedicated critique
+    # model if your hardware budget allows it.
+    reviewer_model: local-model
+
+routing_policy:
+  small_task_tokens_max: 4000
+  medium_task_tokens_max: 12000
+  large_task_tokens_max: 24000
+  fallback_provider: ollama
+
+# ── High-end heterogeneous routing example ──────────────────────────────────
+# Uncomment and adapt the block below when you have enough VRAM / RAM to run
+# different model sizes per phase. Larger models improve quality at each step
+# at the cost of increased latency.
+#
+# providers:
+#   ollama:
+#     base_url: http://127.0.0.1:11434
+#
+#     # 7 B model for planning: fast, low memory, good enough for decomposition.
+#     planner_model: qwen2.5-coder:7b
+#
+#     # 14 B model for implementation: bigger context, better code generation.
+#     implementer_model: qwen2.5-coder:14b
+#
+#     # 16 B model for review: largest model in the chain provides the most
+#     # thorough critique and catches subtle logical errors.
+#     reviewer_model: deepseek-coder-v2:16b

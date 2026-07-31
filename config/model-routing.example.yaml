@@ -1,0 +1,20 @@
+default_provider: ollama
+
+providers:
+  ollama:
+    base_url: http://127.0.0.1:11434
+    planner_model: qwen2.5-coder:7b
+    implementer_model: qwen2.5-coder:14b
+    reviewer_model: deepseek-coder-v2:16b
+
+  lmstudio:
+    base_url: http://127.0.0.1:1234
+    planner_model: local-planner
+    implementer_model: local-implementer
+    reviewer_model: local-reviewer
+
+routing_policy:
+  small_task_tokens_max: 4000
+  medium_task_tokens_max: 12000
+  large_task_tokens_max: 24000
+  fallback_provider: ollama

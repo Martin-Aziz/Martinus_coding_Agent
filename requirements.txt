@@ -1,0 +1,21 @@
+# creator-coding-agent — unified requirements
+# Install: pip install -r requirements.txt
+
+# HTTP client used by orchestrator + AI service
+httpx>=0.27.0
+
+# Orchestrator HTTP server
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+
+# AI service
+pydantic>=2.0.0
+
+# UI
+nicegui>=1.4.0
+
+# Evaluator (optional standalone)
+openai>=1.0.0          # LM Studio OpenAI-compatible client
+
+# Type checking (dev)
+# mypy>=1.10.0

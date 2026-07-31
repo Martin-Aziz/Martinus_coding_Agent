@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Martinus logo">
+  <defs>
+    <linearGradient id="bg" x1="34" y1="28" x2="222" y2="232" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2563eb"/>
+      <stop offset="0.52" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#2563eb" flood-opacity="0.24"/>
+    </filter>
+  </defs>
+  <rect x="18" y="18" width="220" height="220" rx="52" fill="url(#bg)" filter="url(#shadow)"/>
+  <circle cx="188" cy="68" r="44" fill="#ffffff" opacity="0.18"/>
+  <circle cx="66" cy="65" r="8" fill="#ffffff" opacity="0.76"/>
+  <circle cx="190" cy="68" r="10" fill="#ffffff" opacity="0.84"/>
+  <circle cx="190" cy="190" r="12" fill="#34d399"/>
+  <path d="M74 65h106M190 80v98" stroke="#ffffff" stroke-opacity="0.46" stroke-width="4" stroke-linecap="round"/>
+  <text x="128" y="164" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="126" font-weight="800" fill="#ffffff">M</text>
+</svg>
