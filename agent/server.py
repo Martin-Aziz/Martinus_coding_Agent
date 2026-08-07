@@ -28,6 +28,7 @@ from pydantic import BaseModel
 from .orchestrator import AIMemoryClient, Engine
 from .profiles import load_role_routing
 from .providers import Router, from_env
+from .repomap import build_repomap
 
 logger = logging.getLogger(__name__)
 
@@ -279,3 +280,33 @@ async def workspace_read(
 @app.get("/v1/workspace/ping")
 async def workspace_ping() -> dict:
     return {"ok": True, "routes": ["list", "read", "ping"]}
+
+
+# ---------------------------------------------------------------------------
+# Repository map (LOCALFORGE §6.2) — deterministic, read-only (risk level L0).
+# ---------------------------------------------------------------------------
+
+@app.get("/v1/repomap")
+async def repomap(
+    request: Request,
+    workspacePath: str = Query(""),
+    layers: str = Query("1,2,3"),
+) -> dict:
+    """Return a deterministic Layer 1-3 repository map for the workspace.
+
+    Read-only and dependency-free; reuses the same path-confinement as the
+    workspace explorer routes. `layers` is a comma-separated subset of 1,2,3.
+    """
+    _check_api_key(request)
+    if not workspacePath:
+        raise HTTPException(status_code=400, detail="workspacePath is required")
+    target = _safe_abs(workspacePath, ".")
+    if not target.is_dir():
+        raise HTTPException(status_code=400, detail="workspacePath is not a directory")
+    try:
+        wanted = tuple(sorted({int(x) for x in layers.split(",") if x.strip() in ("1", "2", "3")}))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="layers must be a comma-separated subset of 1,2,3")
+    if not wanted:
+        wanted = (1, 2, 3)
+    return build_repomap(str(target), layers=wanted)

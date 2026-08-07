@@ -17,6 +17,8 @@ from typing import Callable, Iterator, Optional
 
 import httpx
 
+from . import response_cache as _response_cache
+
 FALLBACK_RETRY_INSTRUCTION = (
     "\n\nPrevious attempt failed. Before retrying: "
     "(1) identify the root cause explicitly, "
@@ -401,6 +403,7 @@ class Router:
             "completion_tokens": 0,
             "total_tokens": 0,
         }
+        self._cost_usd: float = 0.0
         # Optional Claude Code provider. It remains disabled unless explicitly
         # enabled with MARTINUS_ENABLE_CLAUDE_ADAPTER=1.
         self._claude: Optional["ClaudeCodeClient"] = None
@@ -419,6 +422,33 @@ class Router:
 
     def chat(self, provider: str, req: ChatRequest) -> ChatResponse:
         r = self.resolve(provider)
+
+        # Semantic response cache (opt-in, near-deterministic requests only).
+        # A hit skips the model call entirely — zero tokens, near-zero latency.
+        cache_key = ""
+        cache_on = _response_cache.is_enabled() and _response_cache.cacheable(req.temperature)
+        if cache_on:
+            cache_key = _response_cache.make_key(
+                r, req.model, req.temperature,
+                [{"role": m.role, "content": m.content} for m in req.messages],
+            )
+            hit = _response_cache.get(cache_key)
+            if hit is not None:
+                content = str(hit.get("content", ""))
+                # Replay the whole content as one token so a streaming caller
+                # (UI progress) still sees output on a cache hit.
+                if req.on_token is not None and content:
+                    try:
+                        req.on_token(content)
+                    except Exception:
+                        pass
+                self._usage["cache_hits"] = self._usage.get("cache_hits", 0) + 1
+                return ChatResponse(
+                    provider=r, model=str(hit.get("model", req.model or r)),
+                    content=content,
+                    prompt_tokens=0, completion_tokens=0, total_tokens=0,
+                )
+
         # Serialize model requests machine-wide (hardware safety on 24GB
         # unified memory). Bounded wait so a wedged holder cannot block forever.
         acquired = _MODEL_CALL_SEMAPHORE.acquire(timeout=_READ_TIMEOUT + 120.0)
@@ -454,11 +484,23 @@ class Router:
         self._usage["prompt_tokens"] += response.prompt_tokens
         self._usage["completion_tokens"] += response.completion_tokens
         self._usage["total_tokens"] += response.total_tokens
+        # Accumulate cost if the provider exposed it (Claude adapter only for now).
+        if hasattr(self._claude, "_last_cost_usd") and self._claude is not None:
+            self._cost_usd = self._claude._last_cost_usd
+        # Store to cache on success (only non-empty content is worth replaying).
+        if cache_on and cache_key and response.content:
+            _response_cache.put(cache_key, {
+                "content": response.content,
+                "model": response.model,
+            })
         return response
 
     def usage_totals(self) -> dict[str, int]:
         """Return cumulative measurement-only usage for this Router instance."""
-        return dict(self._usage)
+        totals: dict[str, int] = dict(self._usage)
+        if self._cost_usd:
+            totals["cost_usd_cents"] = int(self._cost_usd * 100)
+        return totals
 
     def health(self, provider: str) -> ProviderHealth:
         r = self.resolve(provider)
@@ -509,6 +551,9 @@ class ClaudeCodeClient:
         extra = os.getenv("MARTINUS_CLAUDE_ARGS", "").strip()
         self._extra_args: list[str] = extra.split() if extra else []
         self._per_call_timeout = float(os.getenv("MARTINUS_CLAUDE_TIMEOUT", "300"))
+        # Cumulative cost (USD) across all calls, summed from the CLI's
+        # total_cost_usd envelope field. Read by Router for usage_totals().
+        self._last_cost_usd: float = 0.0
         # Cache for health probes.
         self._cache = _TTLCache()
 
@@ -573,10 +618,16 @@ class ClaudeCodeClient:
             # Live path: --output-format stream-json emits one JSON object per
             # event. Parse assistant text.deltas and forward them as tokens so
             # the UI sees a real progress bar instead of a 60s spinner.
-            content, model_name, err = self._chat_streaming(merged, req.on_token)
+            content, model_name, err, prompt_tokens, completion_tokens = self._chat_streaming(
+                merged, req.on_token
+            )
             if err:
                 raise RuntimeError(err)
-            return ChatResponse(provider="claude", model=model_name, content=content)
+            return ChatResponse(
+                provider="claude", model=model_name, content=content,
+                prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
+                total_tokens=prompt_tokens + completion_tokens,
+            )
 
         # Non-streaming path: single subprocess, single JSON envelope.
         cmd = [self._binary, "-p", "--output-format", "json"]
@@ -604,6 +655,8 @@ class ClaudeCodeClient:
             )
         content = ""
         model_name = "claude-code"
+        prompt_tokens = 0
+        completion_tokens = 0
         raw_out = proc.stdout.strip()
         if raw_out:
             try:
@@ -616,6 +669,20 @@ class ClaudeCodeClient:
                         or ""
                     ).strip()
                     model_name = str(envelope.get("model") or model_name)
+                    # Priority 5: extract token usage from the Claude CLI envelope.
+                    # The CLI emits usage under either 'usage' or 'modelUsage'.
+                    usage_block = envelope.get("usage") or {}
+                    if isinstance(usage_block, dict):
+                        prompt_tokens = (
+                            usage_block.get("input_tokens", 0)
+                            + usage_block.get("cache_read_input_tokens", 0)
+                            + usage_block.get("cache_creation_input_tokens", 0)
+                        )
+                        completion_tokens = usage_block.get("output_tokens", 0)
+                    # cost_usd from total_cost_usd field
+                    _cost = float(envelope.get("total_cost_usd") or 0.0)
+                    if _cost:
+                        self._last_cost_usd = getattr(self, "_last_cost_usd", 0.0) + _cost
                 else:
                     content = raw_out
             except json.JSONDecodeError:
@@ -626,15 +693,19 @@ class ClaudeCodeClient:
                 f"stderr: {proc.stderr.strip()[:200]}"
             )
         self._cache.invalidate("health")
-        return ChatResponse(provider="claude", model=model_name, content=content)
+        return ChatResponse(
+            provider="claude", model=model_name, content=content,
+            prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens,
+        )
 
     def _chat_streaming(
         self, merged_prompt: str, on_token: Callable[[str], None]
-    ) -> tuple[str, str, str]:
+    ) -> tuple[str, str, str, int, int]:
         """Run `claude -p --output-format stream-json --verbose` and forward
         assistant text chunks to on_token as they arrive. Returns
-        (full_content, model_name, error_message). If error_message is
-        non-empty the caller should raise it."""
+        (full_content, model_name, error_message, prompt_tokens, completion_tokens).
+        If error_message is non-empty the caller should raise it."""
         import subprocess
         import threading
 
@@ -658,7 +729,7 @@ class ClaudeCodeClient:
             return "", "claude-code", (
                 f"claude CLI binary not found at {self._binary!r}. "
                 "Install Claude Code or set MARTINUS_CLAUDE_BINARY."
-            )
+            ), 0, 0
 
         # Write the prompt on stdin and close so the CLI actually starts work.
         try:
@@ -684,6 +755,8 @@ class ClaudeCodeClient:
         assembled: list[str] = []
         seen_texts: set[str] = set()
         model_name = "claude-code"
+        prompt_tokens = 0
+        completion_tokens = 0
         deadline = time.monotonic() + self._per_call_timeout
         try:
             for raw in proc.stdout:
@@ -691,7 +764,7 @@ class ClaudeCodeClient:
                     proc.terminate()
                     return "".join(assembled), model_name, (
                         f"claude CLI stream exceeded {self._per_call_timeout}s"
-                    )
+                    ), prompt_tokens, completion_tokens
                 line = raw.strip()
                 if not line:
                     continue
@@ -742,6 +815,18 @@ class ClaudeCodeClient:
                     # Terminal envelope. `result` field is authoritative when
                     # present; fall back to what we accumulated from deltas.
                     final = event.get("result")
+                    # Extract token usage + cost from the terminal envelope.
+                    usage_block = event.get("usage") or {}
+                    if isinstance(usage_block, dict):
+                        prompt_tokens = (
+                            usage_block.get("input_tokens", 0)
+                            + usage_block.get("cache_read_input_tokens", 0)
+                            + usage_block.get("cache_creation_input_tokens", 0)
+                        )
+                        completion_tokens = usage_block.get("output_tokens", 0)
+                    _cost = float(event.get("total_cost_usd") or 0.0)
+                    if _cost:
+                        self._last_cost_usd = getattr(self, "_last_cost_usd", 0.0) + _cost
                     if isinstance(final, str) and final:
                         # If the assembled deltas somehow disagree with the
                         # authoritative result, prefer result but keep any
@@ -767,18 +852,26 @@ class ClaudeCodeClient:
                     is_error = bool(event.get("is_error"))
                     if is_error:
                         err_msg = str(event.get("terminal_reason") or event.get("stop_reason") or "unknown")
-                        return "".join(assembled), model_name, f"claude CLI reported error: {err_msg}"
+                        return (
+                            "".join(assembled), model_name,
+                            f"claude CLI reported error: {err_msg}",
+                            prompt_tokens, completion_tokens,
+                        )
         except Exception as exc:
-            return "".join(assembled), model_name, f"claude CLI stream read failed: {exc}"
+            return (
+                "".join(assembled), model_name,
+                f"claude CLI stream read failed: {exc}",
+                prompt_tokens, completion_tokens,
+            )
 
         rc = proc.wait(timeout=5)
         stderr_thread.join(timeout=1)
         if rc != 0:
             err = "".join(stderr_chunks).strip()[:400] or f"exit code {rc}"
-            return "".join(assembled), model_name, f"claude CLI exited nonzero: {err}"
+            return "".join(assembled), model_name, f"claude CLI exited nonzero: {err}", prompt_tokens, completion_tokens
 
         self._cache.invalidate("health")
-        return "".join(assembled), model_name, ""
+        return "".join(assembled), model_name, "", prompt_tokens, completion_tokens
 
 
 def from_env() -> Router:

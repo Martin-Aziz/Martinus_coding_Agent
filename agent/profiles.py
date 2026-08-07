@@ -32,6 +32,33 @@ class HardwareProfile:
     # `repair_iterations` times. Zero cost when files pass on the first try.
     executable_verification: bool = True
     repair_iterations: int = 2
+    # LOCALFORGE §6.2 — inject a deterministic Layer 1-3 repository map into the
+    # Discovery / Architecture prompts so the agent reasons about the existing
+    # codebase instead of only files it generated this run. Costs one cheap
+    # deterministic walk; no model call. On for profiles that run Architecture.
+    repo_map: bool = False
+    # LOCALFORGE Rule 2.2 / Node H — run the whole pipeline in an isolated
+    # sandbox (git worktree or temp-dir copy) and apply results back only on a
+    # verified pass. Default OFF: preserves the in-place-write contract.
+    sandbox_isolation: bool = False
+    # LOCALFORGE Rule 2.5 / §9 — a final independent verifier pass with fresh
+    # context (no implementer reasoning). Advisory: can downgrade a pass to
+    # human_review but never upgrades a deterministic failure.
+    independent_verifier: bool = False
+    # Graph-native execution — compile the request into a typed, validated graph
+    # and run it via GraphRuntime instead of the fixed linear phase loop. The
+    # compiled "feature" graph reproduces the linear order, so behavior is
+    # preserved. Default OFF; opt in via MARTINUS_GRAPH_ENGINE=1.
+    graph_engine: bool = False
+    # Behavioral test gate — when True, run pytest (or detected test runner) in
+    # the workspace after generation. A failing test suite overrides a static-
+    # gate pass: no "success" claim without runtime evidence.
+    # Research basis: Anthropic "Building Effective Agents" §B — automated tests
+    # are the bias-free quality signal; Kapoor et al. show static-only gates
+    # accept broken outputs that runtime execution catches.
+    # Default ON for medium/high (they run a Verification phase anyway);
+    # OFF for desktop/low to keep wall-clock short on resource-constrained hosts.
+    behavioral_tests: bool = False
 
 
 PROFILES: dict[str, HardwareProfile] = {
@@ -84,6 +111,8 @@ PROFILES: dict[str, HardwareProfile] = {
         max_retries=3,
         executable_verification=True,
         repair_iterations=2,
+        repo_map=True,
+        behavioral_tests=True,
     ),
     "high": HardwareProfile(
         name="high",
@@ -99,6 +128,9 @@ PROFILES: dict[str, HardwareProfile] = {
         max_retries=3,
         executable_verification=True,
         repair_iterations=2,
+        repo_map=True,
+        independent_verifier=True,
+        behavioral_tests=True,
     ),
 }
 
@@ -120,6 +152,11 @@ def _phase_role(phase: str) -> str:
         return "planner"
     if phase == "Review":
         return "reviewer"
+    # The independent verifier (LOCALFORGE §9) is not a pipeline phase, but it
+    # routes like one: a dedicated `verifier_model` in the routing config lets
+    # it run on a stronger / different model than the implementer.
+    if phase == "IndependentVerify":
+        return "verifier"
     return "implementer"
 
 

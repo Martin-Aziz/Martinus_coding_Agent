@@ -42,6 +42,13 @@ providers:
     # A model with strong instruction-following and critical reasoning is ideal.
     reviewer_model: gemma4:latest
 
+    # Independent verifier (LOCALFORGE §9): a final, fresh-context reviewer that
+    # gates apply-back. Enabled by the "high" profile (or MARTINUS_INDEPENDENT_
+    # VERIFIER=1). Point this at a STRONGER / different model than the
+    # implementer for genuine independence. Falls back to the provider default
+    # when unset.
+    # verifier_model: qwen2.5-coder:14b
+
   # ── LM Studio (local, alternative) ──────────────────────────────────────
   # LM Studio exposes an OpenAI-compatible REST API on port 1234.
   # Load a GGUF model in the LM Studio UI and start the local server, then

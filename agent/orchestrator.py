@@ -22,7 +22,7 @@ import os
 import re
 import time
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace as _dc_replace
 from typing import Any, Callable, Optional
 
 import httpx
@@ -39,6 +39,8 @@ from .prompts import (
 )
 from .providers import ChatRequest, DeterministicProviderError, Message, Router
 from . import gates as _gates
+from . import repomap as _repomap
+from . import sandbox as _sandbox
 
 logger = logging.getLogger(__name__)
 
@@ -546,6 +548,224 @@ def _build_workspace_snapshot(
     return "".join(parts)
 
 
+# Byte budget for the repository-map block injected into Discovery/Architecture.
+# Smaller than the workspace snapshot: the map is a summary, not full contents.
+_REPOMAP_PROMPT_BUDGET = 8_000
+
+
+def _maybe_prepend_repomap(phase: str, workspace_path: str, prompt: str) -> str:
+    """LOCALFORGE §6.2: prepend a deterministic repository map to the Discovery
+    and Architecture prompts so the model reasons about the existing codebase.
+
+    Mirrors the workspace-snapshot injection pattern (byte-budgeted, best-effort,
+    never fatal). Only fires for the two phases that benefit from a structural
+    map; a bad/empty workspace yields an empty string and the prompt is unchanged.
+    Callers gate this on the profile's `repo_map` flag."""
+    if phase not in ("Discovery", "Architecture") or not workspace_path:
+        return prompt
+    try:
+        repomap = _repomap.build_repomap(workspace_path)
+        block = _repomap.compact(repomap, budget=_REPOMAP_PROMPT_BUDGET)
+    except Exception as exc:  # never let map-building break a run
+        logger.warning("repo map generation failed (non-fatal): %s", exc)
+        return prompt
+    # If the workspace has no indexable content the map is just the header/footer;
+    # skip injecting a near-empty block.
+    if not block or "Languages:" not in block and "Modules:" not in block and "Symbols:" not in block:
+        return prompt
+    return block + "\n\n" + prompt
+
+
+# ---------------------------------------------------------------------------
+# Priority 3: Context compression
+# ---------------------------------------------------------------------------
+
+# Per-phase char budgets for history entries that will be included as context.
+# Phases that produce large outputs (Implementation, Architecture) get more space
+# when THEY are the source; terminal phases (Review, Verification) that READ those
+# outputs get them in full — compression only applies to older, preceding entries.
+_COMPRESS_BUDGET: dict[str, int] = {
+    "Discovery": 600,
+    "Clarification": 400,
+    "Architecture": 1_200,
+    "Implementation": 2_000,
+    "Review": 800,
+    "Verification": 800,
+    "Summary": 600,
+}
+# Total char budget for all history entries passed into a single phase prompt.
+# ~6k chars ≈ ~1 500 tokens: keeps every phase well within a 4k context head-room
+# on a 32k-window model while eliminating the token bloat from passing full prior
+# outputs verbatim (LongLLMLingua finding: most value is in recency + task-relevant
+# keywords, not verbatim reproduction of intermediate reasoning).
+_HISTORY_TOTAL_CHAR_BUDGET = int(os.getenv("MARTINUS_HISTORY_BUDGET_CHARS", "6000"))
+
+# Structure-aware compression toggle. When on (default), older entries are
+# compressed by KEEPING high-signal lines (file paths, decisions, signatures,
+# bullets) and DROPPING low-signal prose, instead of a blind byte truncation.
+# This is the deterministic, stdlib-only analog of LongLLMLingua's perplexity-
+# based token retention: most of an intermediate phase's value is in its
+# structural artifacts (what files, what decisions), not its narrative prose.
+_STRUCTURE_AWARE_COMPRESSION = os.getenv(
+    "MARTINUS_STRUCTURE_COMPRESSION", "1"
+).strip() not in ("0", "false", "no")
+
+# Lines matching these signals are "high value" and kept preferentially.
+_HIGH_SIGNAL_RE = re.compile(
+    r"""(?ix)
+    ^\s*(?:
+        [-*•]\s |                       # bullet points (decisions, steps)
+        \d+[.)]\s |                     # numbered lists
+        \#{1,6}\s |                     # markdown headings
+        (?:file|path|module|function|class|def|import|error|verdict|
+           decision|goal|risk|test|fix|note|todo|warning)\b[:\-]  # labeled facts
+    )
+    """,
+)
+# Inline high-signal tokens: any line containing a file path, a code identifier
+# with a dot/slash, or a <file> tag is worth keeping regardless of prefix.
+_INLINE_SIGNAL_RE = re.compile(
+    r"""(?x)
+    < /? file\b |                       # file tags
+    \b[\w./-]+\.[a-zA-Z]{1,5}\b |       # something.ext (paths / filenames)
+    \b(?:def|class|function|const|import|from)\s+\w+ |  # signatures
+    [A-Za-z_]\w*\([^)]*\)               # call/definition signatures
+    """,
+)
+
+
+def _compress_entry_structurally(content: str, budget: int) -> str:
+    """Compress a single entry to ~budget chars by keeping high-signal lines.
+
+    Deterministic, no model call. Strategy:
+    1. Always keep the leading lines (the entry's own summary/intent).
+    2. Score remaining lines: high-signal (paths, decisions, signatures,
+       bullets, headings) beat low-signal prose.
+    3. Emit lines in original order until the budget is hit, preferring
+       high-signal lines; append a compression marker if anything was dropped.
+    Falls back to plain truncation only when the text has no line structure."""
+    if len(content) <= budget:
+        return content
+    lines = content.splitlines()
+    if len(lines) <= 1:
+        # No line structure to exploit — plain truncation is the honest option.
+        return content[:budget] + " …[compressed]"
+
+    # Keep the first 2 lines verbatim (intent/summary anchor), but never let the
+    # head alone blow the budget — truncate it if a single leading line is huge.
+    head_keep = min(2, len(lines))
+    head_text = "\n".join(lines[:head_keep])
+    if len(head_text) > budget:
+        return head_text[:budget] + " …[compressed]"
+    kept: list[tuple[int, str]] = [(i, lines[i]) for i in range(head_keep)]
+    used = sum(len(l) + 1 for _, l in kept)
+
+    # Rank the rest: high-signal first, then by original order.
+    rest = list(range(head_keep, len(lines)))
+
+    def signal(idx: int) -> int:
+        line = lines[idx]
+        if _HIGH_SIGNAL_RE.search(line):
+            return 2
+        if _INLINE_SIGNAL_RE.search(line):
+            return 1
+        return 0
+
+    dropped = False
+    # Greedy by signal (stable on original index for ties).
+    for idx in sorted(rest, key=lambda i: (-signal(i), i)):
+        cost = len(lines[idx]) + 1
+        if signal(idx) == 0:
+            # Skip pure prose once we've spent most of the budget on signal.
+            if used + cost > budget:
+                dropped = True
+                continue
+        if used + cost > budget:
+            dropped = True
+            continue
+        kept.append((idx, lines[idx]))
+        used += cost
+
+    kept.sort(key=lambda t: t[0])
+    out = "\n".join(l for _, l in kept)
+    if dropped:
+        out += "\n…[compressed: low-signal lines dropped]"
+    return out
+
+
+def _compress_history(
+    entries: list["SessionEntry"],
+    current_phase: str,
+) -> list["SessionEntry"]:
+    """Return a budget-trimmed copy of entries for injection into current_phase.
+
+    Strategy (deterministic, no model call, zero new deps):
+    1. Always keep the most recent entry verbatim — recency is the strongest
+       relevance signal.
+    2. For older entries, truncate each to its per-phase char budget.
+    3. If the total still exceeds _HISTORY_TOTAL_CHAR_BUDGET, drop the oldest
+       entries first until it fits — they are already represented in any
+       hierarchical summary that was prepended.
+    4. Return a list of lightweight SessionEntry copies (original objects untouched).
+    """
+    if not entries:
+        return entries
+
+    # Phase that will READ the result — keep Implementation/Architecture fuller
+    # when the CURRENT phase needs to understand what was built.
+    reading_phases = {"Review", "Verification", "IndependentVerify"}
+    full_recent = current_phase in reading_phases
+
+    result: list["SessionEntry"] = []
+    # Work newest-to-oldest so we can budget from the most important end.
+    for i, entry in enumerate(reversed(entries)):
+        if i == 0 and full_recent:
+            # Keep last entry verbatim for review/verification phases.
+            result.append(entry)
+            continue
+        budget = _COMPRESS_BUDGET.get(entry.phase, 400)
+        if len(entry.content) > budget:
+            if _STRUCTURE_AWARE_COMPRESSION:
+                trimmed = _compress_entry_structurally(entry.content, budget)
+            else:
+                trimmed = entry.content[:budget] + " …[compressed]"
+            result.append(SessionEntry(phase=entry.phase, content=trimmed))
+        else:
+            result.append(entry)
+
+    result.reverse()
+
+    # Drop oldest entries if total still exceeds budget.
+    while True:
+        total = sum(len(e.content) for e in result)
+        if total <= _HISTORY_TOTAL_CHAR_BUDGET or len(result) <= 1:
+            break
+        result.pop(0)  # drop oldest
+
+    return result
+
+
+_VERDICT_RE = re.compile(r"VERDICT:\s*(APPROVED|REJECTED|HUMAN_REVIEW)", re.IGNORECASE)
+_CONFIDENCE_RE = re.compile(r"CONFIDENCE:\s*(\d{1,3})", re.IGNORECASE)
+
+
+def _parse_verifier_verdict(content: str) -> tuple[str, int]:
+    """Parse the independent verifier's one-line contract defensively. Anything
+    unparseable falls back to HUMAN_REVIEW so uncertainty never becomes a pass."""
+    verdict = "HUMAN_REVIEW"
+    m = _VERDICT_RE.search(content or "")
+    if m:
+        verdict = m.group(1).upper()
+    confidence = 0
+    c = _CONFIDENCE_RE.search(content or "")
+    if c:
+        try:
+            confidence = max(0, min(100, int(c.group(1))))
+        except ValueError:
+            confidence = 0
+    return verdict, confidence
+
+
 def _extract_and_write_files(workspace_path: str, output: str) -> list[str]:
     written: list[str] = []
     tagged = _iter_file_tags(output)
@@ -708,6 +928,9 @@ class Engine:
         # can never bump temperatures or budgets of an unrelated later run.
         self._temp = TemperatureScheduler()
         self._budget: Optional[RunBudget] = None
+        # Graph-engine trace of the most recent run (for the manifest); empty
+        # unless the graph engine ran.
+        self._last_graph_trace: dict = {}
 
     # ---- core retry loop (Algorithm 3.1) -----------------------------------
 
@@ -785,14 +1008,23 @@ class Engine:
         max_retries: int,
         on_event: Optional[Callable[[dict], None]],
         generated_files: Optional[list[str]] = None,
+        repo_map: bool = False,
     ) -> PhaseResult:
         started = time.time()
         system = build_system_instruction(phase, state.max_lines, state.task)
+        # Priority 3: compress history before injecting into the prompt.
+        # Keeps each phase's input context within budget without losing recency
+        # or task-critical content. Zero model calls — purely deterministic.
+        compressed_entries = _compress_history(state.entries, phase)
         prompt = build_prompt(
             phase, state.task, state.workspace_path,
             provider, state.max_lines, state.goals,
-            [e.to_dict() for e in state.entries], retrieved,
+            [e.to_dict() for e in compressed_entries], retrieved,
         )
+        # LOCALFORGE §6.2: give Discovery / Architecture a structural map of the
+        # existing repository (deterministic, no model call).
+        if repo_map:
+            prompt = _maybe_prepend_repomap(phase, state.workspace_path, prompt)
         # Review and Verification grade against ON-DISK reality, not their own
         # memory of what Implementation said. Inject the actual file contents
         # so the model can't hallucinate a function it never wrote.
@@ -842,6 +1074,7 @@ class Engine:
         self, state: SessionState, provider: str, model: str,
         retrieved: list[dict], max_retries: int,
         on_event: Optional[Callable[[dict], None]],
+        repo_map: bool = False,
     ) -> PhaseResult:
         started = time.time()
         principles = self._step_back_query(state, provider, model)
@@ -850,6 +1083,8 @@ class Engine:
             provider, state.max_lines, state.goals,
             [e.to_dict() for e in state.entries], retrieved,
         )
+        if repo_map:
+            base_prompt = _maybe_prepend_repomap("Architecture", state.workspace_path, base_prompt)
         if principles:
             base_prompt = (
                 f"=== Step-Back: General Architectural Principles ===\n{principles}\n\n"
@@ -880,6 +1115,8 @@ class Engine:
             provider, state.max_lines, state.goals,
             [e.to_dict() for e in state.entries], retrieved,
         )
+        if profile.repo_map:
+            base_prompt = _maybe_prepend_repomap("Architecture", state.workspace_path, base_prompt)
         if principles:
             base_prompt = (
                 f"=== Step-Back: General Architectural Principles ===\n{principles}\n\n"
@@ -921,7 +1158,8 @@ class Engine:
 
         if not branches:
             return self._run_architecture_with_step_back(
-                state, provider, model, retrieved, profile.max_retries, on_event)
+                state, provider, model, retrieved, profile.max_retries, on_event,
+                repo_map=profile.repo_map)
         if len(branches) == 1:
             return PhaseResult(
                 phase="Architecture", output=branches[0][1], attempts=total_attempts,
@@ -1535,6 +1773,34 @@ class Engine:
         profile_default = os.getenv("HARDWARE_PROFILE_DEFAULT", "medium")
         profile = resolve_profile(hardware_profile, profile_default)
 
+        # Improvement 8: adaptive profile downgrade for simple tasks.
+        # Kapoor et al. (arXiv:2407.01502): complex scaffolding costs ~55x more
+        # for equal/worse quality on simple tasks. When the deterministic
+        # classifier flags an unambiguous small greenfield task AND the profile
+        # runs the heavy 6-phase pipeline, drop to a lean phase set for THIS run
+        # (Discovery → Implementation → Verification). Verification advantages
+        # (executable gates, behavioral tests, independent verifier) are kept —
+        # only the planning/architecture/review overhead is trimmed. This brings
+        # the fast-path benefit to the linear engine, not just the graph engine.
+        # Opt out with MARTINUS_ADAPTIVE_PROFILE=0.
+        adaptive_on = os.getenv("MARTINUS_ADAPTIVE_PROFILE", "1").strip() not in ("0", "false", "no")
+        if adaptive_on and len(profile.phases) > 3:
+            try:
+                from . import graph_patterns as _graph_patterns
+                if _graph_patterns.classify_task(task, goals) == "simple":
+                    lean_phases = [p for p in profile.phases
+                                   if p in ("Discovery", "Implementation", "Verification")]
+                    if lean_phases and len(lean_phases) < len(profile.phases):
+                        profile = _dc_replace(profile, phases=lean_phases)
+                        if on_event:
+                            on_event({
+                                "type": "profile_downgraded",
+                                "reason": "simple task — skipping Clarification/Architecture/Review",
+                                "phases": list(lean_phases),
+                            })
+            except Exception as exc:  # classification is best-effort, never fatal
+                logger.debug("adaptive profile downgrade skipped (non-fatal): %s", exc)
+
         # Workspace confinement: when the operator pins a workspace root, a
         # run may only write inside it. (Path traversal inside the workspace
         # is rejected separately by _safe_abs_write_path.)
@@ -1551,6 +1817,7 @@ class Engine:
         # never leak between runs.
         self._temp = TemperatureScheduler()
         self._budget = RunBudget(cancel_check=cancel_check)
+        self._last_graph_trace = {}
         usage_before = self._router.usage_totals()
 
         resolved_provider = self._router.resolve(provider_name)
@@ -1563,6 +1830,40 @@ class Engine:
             provider=resolved_provider,
             max_lines=max_lines if max_lines > 0 else 2000,
         )
+
+        # LOCALFORGE Rule 2.2 / Node H — isolated execution. When enabled (by
+        # profile or the MARTINUS_SANDBOX_ISOLATION env opt-in), the whole
+        # pipeline runs in a sandbox and results are applied back to the real
+        # workspace only after a verified pass. `original_workspace` is the
+        # user's tree; `state.workspace_path` is swapped to the sandbox for the
+        # duration of the run and restored before the manifest is written.
+        original_workspace = workspace_path
+        sandbox_handle: Optional[_sandbox.SandboxHandle] = None
+        sandbox_enabled = (
+            workspace_path
+            and (profile.sandbox_isolation
+                 or os.getenv("MARTINUS_SANDBOX_ISOLATION", "").strip() in ("1", "true", "yes"))
+        )
+        if sandbox_enabled:
+            if _sandbox.is_martinus_repo(workspace_path) and on_event:
+                on_event({
+                    "type": "sandbox_warning",
+                    "sessionId": state.session_id,
+                    "message": "workspace appears to be the Martinus source checkout; "
+                               "sandbox will isolate but apply-back mutates this repo",
+                })
+            sandbox_handle = _sandbox.create_sandbox(workspace_path, session_id=state.session_id)
+            if sandbox_handle is not None:
+                state.workspace_path = sandbox_handle.sandbox_path
+                if on_event:
+                    on_event({
+                        "type": "sandbox_created",
+                        "sessionId": state.session_id,
+                        "kind": sandbox_handle.kind,
+                        "sandboxPath": sandbox_handle.sandbox_path,
+                    })
+            else:
+                logger.info("sandbox isolation requested but not created; running in place")
 
         if profile.hierarchical_summary:
             self._apply_hierarchical_summary(state)
@@ -1586,11 +1887,22 @@ class Engine:
         requested_files = _extract_requested_files(task) if workspace_path else []
         aborted_reason = ""
 
+        graph_enabled = (
+            profile.graph_engine
+            or os.getenv("MARTINUS_GRAPH_ENGINE", "").strip() in ("1", "true", "yes")
+        )
+
         try:
-            self._run_phases(
-                profile, state, resolved_provider, model_override,
-                requested_files, generated_files, result, on_event,
-            )
+            if graph_enabled:
+                self._run_graph(
+                    profile, state, resolved_provider, model_override,
+                    requested_files, generated_files, result, on_event,
+                )
+            else:
+                self._run_phases(
+                    profile, state, resolved_provider, model_override,
+                    requested_files, generated_files, result, on_event,
+                )
         except RunAborted as exc:
             aborted_reason = str(exc)
             logger.warning("run %s aborted: %s", state.session_id, aborted_reason)
@@ -1628,14 +1940,21 @@ class Engine:
         )
         unique_generated = verification["generatedFiles"]
 
-        # Behavioral evidence (opt-in — executes model-generated tests): when
-        # enabled and the workspace contains tests, their result outranks the
-        # static gates as final-success evidence.
-        if (
-            os.getenv("MARTINUS_RUN_WORKSPACE_TESTS", "").strip() in ("1", "true", "yes")
-            and state.workspace_path
-            and unique_generated
-        ):
+        # When the graph engine ran, record its trace (nodes, order, per-node
+        # status) into the verification summary so it lands in the manifest and
+        # the run-completed event for audit/replay.
+        if self._last_graph_trace:
+            verification["graph"] = self._last_graph_trace
+
+        # Behavioral evidence: run pytest (or detected runner) in the workspace.
+        # Enabled by profile.behavioral_tests (default on for medium/high) or the
+        # env opt-in. A failing suite overrides static-gate success — no "success"
+        # claim without runtime evidence (Anthropic "Building Effective Agents" §B).
+        behavioral_enabled = (
+            profile.behavioral_tests
+            or os.getenv("MARTINUS_RUN_WORKSPACE_TESTS", "").strip() in ("1", "true", "yes")
+        )
+        if behavioral_enabled and state.workspace_path and unique_generated:
             behavioral = _gates.run_workspace_tests(state.workspace_path)
             if behavioral is not None:
                 verification["behavioralTests"] = behavioral
@@ -1649,6 +1968,10 @@ class Engine:
             k: usage_after.get(k, 0) - usage_before.get(k, 0) for k in usage_after
         }
         result.usage["budget_model_calls"] = self._budget.model_calls if self._budget else 0
+        # Priority 5: expose human-readable cost alongside the raw cents value.
+        cost_cents = result.usage.get("cost_usd_cents", 0)
+        if cost_cents:
+            result.usage["cost_usd"] = round(cost_cents / 100, 4)
         if aborted_reason:
             result.status = "aborted"
             result.success = False
@@ -1669,6 +1992,201 @@ class Engine:
             f"[status: {result.status}] " + result.summary
             + (f" — {result.failure_reason}" if result.failure_reason else "")
         )
+
+        # --- Independent verifier + refinement loop (LOCALFORGE Rule 2.5 / §9) --
+        # First pass: run verifier with fresh context. If confidence < threshold
+        # AND budget permits, inject the critique into a re-run of Implementation
+        # then re-verify — up to _REFINE_MAX_ROUNDS times (Reflexion-style, but
+        # budget-bounded per Kapoor et al.: only fire extra rounds on hard cases).
+        verifier_enabled = (
+            profile.independent_verifier
+            or os.getenv("MARTINUS_INDEPENDENT_VERIFIER", "").strip() in ("1", "true", "yes")
+        )
+
+        # Improvement 9: early-exit on conclusive deterministic evidence.
+        # The independent verifier is the single most expensive model call in a
+        # run (fresh context = full re-read). When (a) the task is a simple one,
+        # (b) static gates passed, and (c) behavioral tests actually RAN and
+        # passed, the deterministic evidence is already conclusive — a second
+        # model opinion adds cost without adding signal (Anthropic: automated
+        # tests are the bias-free quality signal; Kapoor et al.: don't pay for
+        # scaffolding a simple task doesn't need). We only SKIP the extra model
+        # call; we never upgrade a failure. Opt out with MARTINUS_VERIFY_EARLY_EXIT=0.
+        early_exit_on = os.getenv("MARTINUS_VERIFY_EARLY_EXIT", "1").strip() not in ("0", "false", "no")
+        behavioral = verification.get("behavioralTests")
+        behavioral_passed = bool(behavioral) and behavioral.get("passed") is True
+        if verifier_enabled and early_exit_on and not aborted_reason and verification.get("passed"):
+            try:
+                from . import graph_patterns as _graph_patterns
+                is_simple = _graph_patterns.classify_task(state.task, state.goals) == "simple"
+            except Exception:
+                is_simple = False
+            if is_simple and behavioral_passed:
+                verifier_enabled = False
+                verification["independentVerdict"] = {
+                    "verdict": "APPROVED",
+                    "confidence": 100,
+                    "notes": "early-exit: simple task, static gates + behavioral tests both passed "
+                             "(verifier model call skipped to save tokens)",
+                    "skipped": True,
+                }
+                if on_event:
+                    on_event({
+                        "type": "verifier_early_exit",
+                        "sessionId": state.session_id,
+                        "reason": "simple task with passing gates + behavioral tests",
+                    })
+
+        _REFINE_CONFIDENCE_THRESHOLD = 80
+        _REFINE_MAX_ROUNDS = 2
+        if verifier_enabled and not aborted_reason:
+            verdict = self._run_independent_verifier(
+                state, verification, resolved_provider, on_event,
+            )
+            verification["independentVerdict"] = verdict
+            # Remember whether the FIRST verdict rejected the result. Refinement
+            # can only clear this by producing an explicit APPROVED — a degraded
+            # HUMAN_REVIEW after retries must not silently upgrade a rejection.
+            was_rejected = verdict["verdict"] == "REJECTED"
+            refinement_rounds = 0
+            # Only refine on an explicit REJECTED verdict with low confidence.
+            # HUMAN_REVIEW means "needs a human" — no point in automated re-tries.
+            # This prevents consuming extra budget on uncertain-but-not-rejected results.
+            while (
+                verdict["verdict"] == "REJECTED"
+                and verdict["confidence"] < _REFINE_CONFIDENCE_THRESHOLD
+                and refinement_rounds < _REFINE_MAX_ROUNDS
+                and not self._budget.model_calls >= self._budget.max_model_calls
+            ):
+                refinement_rounds += 1
+                critique = verdict.get("notes", "")
+                if on_event:
+                    on_event({
+                        "type": "refinement_round",
+                        "sessionId": state.session_id,
+                        "round": refinement_rounds,
+                        "confidence": verdict["confidence"],
+                        "verdict": verdict["verdict"],
+                    })
+                # Inject critique into state so the next Implementation sees it.
+                state.entries.append(SessionEntry(
+                    phase="VerifierCritique",
+                    content=(
+                        f"=== Independent Verifier Critique (round {refinement_rounds}) ===\n"
+                        f"Verdict: {verdict['verdict']} (confidence {verdict['confidence']})\n"
+                        f"{critique}"
+                    ),
+                ))
+                try:
+                    phase_result = self._execute_phase_step(
+                        "Implementation", profile, state,
+                        resolved_provider, "",
+                        requested_files, generated_files,
+                        result, on_event,
+                    )
+                    state.entries.append(SessionEntry(
+                        phase="Implementation", content=phase_result.output,
+                    ))
+                    generated_files = list(set(
+                        generated_files + [m.group("path") for m in _FILE_TAG_RE.finditer(phase_result.output)]
+                    ))
+                except (RunAborted, DeterministicProviderError):
+                    break
+                # Re-run deterministic gates on the new output.
+                if state.workspace_path and generated_files:
+                    gate_results = _gates.run_gates(state.workspace_path, generated_files)
+                    verification["checks"] = [
+                        {"file": f, "kind": gr.kind, "ok": gr.ok, "error": gr.error}
+                        for f, gr in gate_results
+                    ]
+                    verification["passed"] = all(gr.ok for _, gr in gate_results)
+                # Re-verify with fresh context.
+                verdict = self._run_independent_verifier(
+                    state, verification, resolved_provider, on_event,
+                )
+                verification["independentVerdict"] = verdict
+            verification["refinementRounds"] = refinement_rounds
+
+            # A rejection stands unless refinement produced an explicit APPROVED.
+            # Final verdict determines the truthful outcome:
+            final_verdict = verdict["verdict"]
+            rejection_stands = (
+                final_verdict == "REJECTED"
+                or (was_rejected and final_verdict != "APPROVED")
+            )
+            if result.success and rejection_stands:
+                result.status = "failure"
+                result.success = False
+                result.failure_reason = (
+                    "independent verifier REJECTED the result "
+                    f"(confidence {verdict['confidence']})"
+                )
+                result.summary = (
+                    f"[status: {result.status}] " + self._build_summary(state)
+                    + f" — {result.failure_reason}"
+                )
+            elif not result.success and final_verdict == "APPROVED" and verification["passed"]:
+                # Refinement turned a failure into a verified pass.
+                result.status = "success"
+                result.success = True
+                result.failure_reason = ""
+                result.summary = f"[status: {result.status}] " + self._build_summary(state)
+
+        # --- Sandbox apply-back (LOCALFORGE step 18 + §7 L2) ------------------
+        # Order matters: verification above ran against the SANDBOX. Only on a
+        # verified pass do we copy results back into the user's real workspace,
+        # then restore state.workspace_path so the manifest below lands there.
+        if sandbox_handle is not None:
+            try:
+                if result.success:
+                    apply = _sandbox.apply_back(sandbox_handle, generated_files)
+                    verification["sandbox"] = {
+                        "kind": sandbox_handle.kind,
+                        "applied": apply.applied,
+                        "conflicts": apply.conflicts,
+                        "refused": apply.refused,
+                        "deniedReason": apply.denied_reason,
+                    }
+                    # A conflict or policy deny means the workspace did NOT
+                    # receive the verified files — that is a truthful failure,
+                    # not a success (preserves the evidence-only status rule).
+                    if apply.denied_reason or apply.conflicts or (
+                        generated_files and not apply.applied
+                    ):
+                        result.status = "failure"
+                        result.success = False
+                        result.failure_reason = (
+                            "sandbox results not applied: "
+                            + (apply.denied_reason or "")
+                            + (f" conflicts={apply.conflicts}" if apply.conflicts else "")
+                        ).strip()
+                        result.summary = f"[status: {result.status}] " + self._build_summary(state)
+                    if on_event:
+                        on_event({
+                            "type": "sandbox_applied",
+                            "sessionId": state.session_id,
+                            **verification["sandbox"],
+                        })
+                else:
+                    # Failed run: leave the user's workspace untouched. Keep the
+                    # sandbox path in the record so it can be inspected.
+                    verification["sandbox"] = {
+                        "kind": sandbox_handle.kind,
+                        "applied": [],
+                        "note": "run did not pass verification; workspace left untouched",
+                        "sandboxPath": sandbox_handle.sandbox_path,
+                    }
+            finally:
+                # Restore the real workspace for the manifest + reporting, then
+                # clean up the sandbox. Cleanup skipped on failure ONLY if the
+                # operator asked to keep it for inspection.
+                state.workspace_path = original_workspace
+                keep = (
+                    not result.success
+                    and os.getenv("MARTINUS_SANDBOX_KEEP_ON_FAILURE", "").strip() in ("1", "true", "yes")
+                )
+                if not keep:
+                    _sandbox.cleanup(sandbox_handle)
 
         if on_event:
             on_event({
@@ -1712,6 +2230,68 @@ class Engine:
         on_event: Optional[Callable[[dict], None]],
     ) -> None:
         for phase in profile.phases:
+            self._execute_phase_step(
+                phase, profile, state, resolved_provider, model_override,
+                requested_files, generated_files, result, on_event,
+            )
+
+    def _run_graph(
+        self,
+        profile: HardwareProfile,
+        state: SessionState,
+        resolved_provider: str,
+        model_override: str,
+        requested_files: list[str],
+        generated_files: list[str],
+        result: RunResult,
+        on_event: Optional[Callable[[dict], None]],
+    ) -> None:
+        """Graph-native execution path (LOCALFORGE graph engine). Compiles the
+        request into a validated graph and runs it via GraphRuntime, whose
+        `phase.run` nodes call back into `_execute_phase_step` — so the compiled
+        `feature` graph reproduces the linear pipeline's behavior. The graph
+        trace is stashed on `state` for the manifest. Off by default."""
+        from . import graph as _graph
+        from . import graph_patterns as _graph_patterns
+
+        compiled = _graph_patterns.compile_graph(state.task, state.goals, profile)
+        if on_event:
+            on_event({
+                "type": "graph_compiled",
+                "sessionId": state.session_id,
+                "graph": compiled.to_dict(),
+            })
+        gstate = _graph.GraphState(
+            session=state, profile=profile, provider=resolved_provider,
+            model_override=model_override, requested_files=requested_files,
+            generated_files=generated_files, result=result,
+        )
+        gresult = _graph.GraphRuntime().run(compiled, gstate, self, on_event)
+        # Stash the trace so _write_run_manifest can record it (audit/replay).
+        self._last_graph_trace = {
+            "graphId": compiled.id,
+            "completed": gresult.completed,
+            "skipped": gresult.skipped,
+            "trace": gresult.trace,
+        }
+
+    def _execute_phase_step(
+        self,
+        phase: str,
+        profile: HardwareProfile,
+        state: SessionState,
+        resolved_provider: str,
+        model_override: str,
+        requested_files: list[str],
+        generated_files: list[str],
+        result: RunResult,
+        on_event: Optional[Callable[[dict], None]],
+    ) -> "PhaseResult":
+        """Run one phase end-to-end: dispatch, write files, recovery/repair,
+        reference validation, bookkeeping. Extracted verbatim from the original
+        `_run_phases` loop body so the linear engine and the graph runtime share
+        identical per-phase behavior (golden-trace parity)."""
+        if True:
             if self._budget:
                 self._budget.check(f"before phase {phase}")
             if on_event:
@@ -1841,6 +2421,8 @@ class Engine:
                     "sessionId": state.session_id,
                 })
 
+        return phase_result
+
     def _dispatch_phase(
         self,
         phase: str,
@@ -1858,7 +2440,8 @@ class Engine:
                     state, provider, model, retrieved, profile, on_event)
             if profile.step_back:
                 return self._run_architecture_with_step_back(
-                    state, provider, model, retrieved, profile.max_retries, on_event)
+                    state, provider, model, retrieved, profile.max_retries, on_event,
+                    repo_map=profile.repo_map)
         elif phase == "Implementation" and profile.tree_of_code:
             return self._run_tree_of_code(state, provider, model, retrieved, profile.max_retries, on_event)
         elif phase == "Review" and profile.self_critique:
@@ -1866,8 +2449,92 @@ class Engine:
                 state, provider, model, retrieved, profile.max_retries, on_event, generated_files=generated_files)
         return self._run_phase(
             phase, state, provider, model, retrieved, profile.max_retries, on_event,
-            generated_files=generated_files,
+            generated_files=generated_files, repo_map=profile.repo_map,
         )
+
+    # ---- LOCALFORGE Rule 2.5 / §9: Independent verifier --------------------
+
+    def _run_independent_verifier(
+        self,
+        state: SessionState,
+        verification: dict,
+        provider: str,
+        on_event: Optional[Callable[[dict], None]],
+    ) -> dict:
+        """A final review with FRESH context. Per spec §2.5/§9 the verifier must
+        NOT receive the implementer's internal justification — so this builds a
+        prompt from scratch (original request + acceptance criteria + on-disk
+        result + deterministic evidence) and deliberately excludes state.entries.
+
+        Advisory only: the returned verdict may downgrade a deterministic pass to
+        require review, but never upgrades a deterministic failure. Never raises;
+        an unparseable/failed call yields HUMAN_REVIEW so the run continues."""
+        result: dict = {"verdict": "HUMAN_REVIEW", "confidence": 0, "notes": ""}
+
+        # A dedicated verifier model via routing (verifier_model in the config);
+        # empty string lets the provider use its default.
+        verifier_model = ""
+        if self._routing:
+            verifier_model = self._routing.model_for(provider, "IndependentVerify")
+
+        snapshot = _build_workspace_snapshot(state.workspace_path, verification.get("generatedFiles", []))
+        checks = verification.get("checks", [])
+        evidence_lines = [
+            f"- {c.get('file')}: {c.get('kind')} {'OK' if c.get('ok') else 'FAIL: ' + str(c.get('error',''))}"
+            for c in checks
+        ]
+        behavioral = verification.get("behavioralTests")
+        if behavioral is not None:
+            evidence_lines.append(f"- behavioral tests passed: {behavioral.get('passed')}")
+
+        system = (
+            "ROLE: You are an INDEPENDENT verifier. You did not write this code and "
+            "have no stake in approving it. You see only the request, the acceptance "
+            "criteria, the files on disk, and the deterministic evidence — not the "
+            "implementer's reasoning.\n\n"
+            "Judge whether the delivered result actually satisfies the request. "
+            "Be skeptical: unverified claims are not evidence.\n\n"
+            "OUTPUT CONTRACT: end your response with exactly one line:\n"
+            "VERDICT: APPROVED | REJECTED | HUMAN_REVIEW  (CONFIDENCE: 0-100)"
+        )
+        prompt = (
+            f"ORIGINAL REQUEST:\n{state.task}\n\n"
+            f"ACCEPTANCE CRITERIA / GOALS:\n" + ("\n".join(f"- {g}" for g in state.goals) or "(none stated)")
+            + "\n\n"
+            f"REQUESTED FILES: {verification.get('requestedFiles', [])}\n"
+            f"MISSING FILES: {verification.get('missingFiles', [])}\n"
+            f"DETERMINISTIC EVIDENCE:\n" + ("\n".join(evidence_lines) or "(no static checks)")
+            + "\n\n"
+            f"{snapshot or '(no files on disk)'}\n\n"
+            "Assess requirement completeness, correctness, and regression risk, then "
+            "give your one-line VERDICT."
+        )
+
+        try:
+            content, _prov, model, _attempts = self._call_with_retry(
+                provider, system, prompt, 0.0, verifier_model,
+                max_retries=1, phase="IndependentVerify", on_event=on_event,
+            )
+        except (DeterministicProviderError, RunAborted):
+            raise
+        except Exception as exc:  # never let the verifier break a run
+            logger.warning("independent verifier call failed (non-fatal): %s", exc)
+            result["notes"] = f"verifier unavailable: {exc}"
+            return result
+
+        verdict, confidence = _parse_verifier_verdict(content)
+        result["verdict"] = verdict
+        result["confidence"] = confidence
+        result["model"] = model
+        result["notes"] = _truncate(content, 800)
+        if on_event:
+            on_event({
+                "type": "independent_verdict",
+                "sessionId": state.session_id,
+                "verdict": verdict,
+                "confidence": confidence,
+            })
+        return result
 
     @staticmethod
     def _build_summary(state: SessionState) -> str:

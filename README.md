@@ -21,6 +21,26 @@ Implementation, Review, and Verification.
 `AGENTS.md` contains a detailed source map. Evaluation records and surveys are
 kept separately in the submission package’s `evidence/` directory.
 
+## LOCALFORGE capabilities
+
+Four capabilities from the LOCALFORGE graph (`graphLoop.md`) are implemented as
+opt-in, backward-compatible additions (see `AGENTS.md` for flags and env vars):
+
+- **Sandbox isolation** (`agent/sandbox.py`) — runs the pipeline in an isolated
+  git worktree (or temp-dir copy) and applies files back to the real workspace
+  only after a verified pass. Enable with `MARTINUS_SANDBOX_ISOLATION=1`.
+- **Permission tiers** (`agent/permissions.py`) — classifies actions L0–L3;
+  external/destructive actions are denied by default in a headless run.
+- **Independent verifier** (`agent/orchestrator.py`) — a final fresh-context
+  reviewer that gates apply-back; advisory (can downgrade a pass, never upgrade
+  a failure). On for the `high` profile or `MARTINUS_INDEPENDENT_VERIFIER=1`.
+- **Repository map** (`agent/repomap.py`) — a deterministic Layer 1–3 map/symbol
+  index injected into Discovery/Architecture and served at `GET /v1/repomap`.
+- **Graph-native execution** (`agent/graph.py`, `agent/graph_patterns.py`) —
+  compiles a request into a typed, validated execution graph and runs it via
+  `GraphRuntime` (reusing the existing phase logic as node executors) instead of
+  the fixed linear loop. Enable with `MARTINUS_GRAPH_ENGINE=1`. See `ROADMAP.md`.
+
 ## Local setup
 
 Python 3.11+ and one model provider are required.
