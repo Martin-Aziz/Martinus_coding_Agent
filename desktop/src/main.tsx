@@ -644,7 +644,11 @@ function App() {
       const selected = await invoke<string | null>("choose_workspace", { current: workspace });
       if (selected) {
         setWorkspace(selected);
-        setFiles([]);
+        setFiles(await fetchWorkspaceFiles(selected));
+        setShowResults(true);
+        setSelectedFile(null);
+        setTestsResult(null);
+        await refreshPreview(selected);
       }
     } catch (err) {
       setError(String(err));
