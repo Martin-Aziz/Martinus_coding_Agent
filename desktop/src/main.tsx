@@ -6,8 +6,17 @@ import {
   CheckCircle2,
   ChevronDown,
   Circle,
+  Code2,
   Clock3,
+  Eye,
+  ExternalLink,
+  File,
+  FileCode2,
+  FileImage,
+  FileJson,
+  FileText,
   FolderOpen,
+  FlaskConical,
   Loader2,
   Paperclip,
   Play,
@@ -274,9 +283,12 @@ function MartinusLogo() {
 }
 
 function PhaseCardView({ card }: { card: PhaseCard }) {
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpen] = React.useState(card.status === "streaming");
   const [now, setNow] = React.useState(() => performance.now());
   const color = phaseColors[card.phase] ?? "#64748b";
+  React.useEffect(() => {
+    setOpen(card.status === "streaming");
+  }, [card.status]);
   React.useEffect(() => {
     if (card.status !== "streaming") return;
     const timer = window.setInterval(() => setNow(performance.now()), 1000);
@@ -371,8 +383,11 @@ function App() {
   const [previewLoading, setPreviewLoading] = React.useState(false);
   const [previewContainsPython, setPreviewContainsPython] = React.useState(false);
   const [reloadCounter, setReloadCounter] = React.useState(0);
+  const [previewTab, setPreviewTab] = React.useState<"preview" | "code" | "tests">("preview");
+  const [narrowPane, setNarrowPane] = React.useState<"progress" | "preview">("preview");
   const [runOutcome, setRunOutcome] = React.useState<"completed" | "partial" | "failed" | "">("");
   const [selectedFile, setSelectedFile] = React.useState<{ path: string; content: string } | null>(null);
+  const [selectedPath, setSelectedPath] = React.useState("");
   const [testsConfirm, setTestsConfirm] = React.useState(false);
   const [testsLoading, setTestsLoading] = React.useState(false);
   const [testsResult, setTestsResult] = React.useState<WorkspaceTestResult | null>(null);
@@ -567,7 +582,9 @@ function App() {
       if (!response.ok) throw new Error(await response.text());
       const session = await response.json() as PreviewSession;
       setPreviewToken(session.token);
-      setPreviewContainsPython(session.files.some((path) => path.toLowerCase().endsWith(".py")));
+      const hasPython = session.files.some((path) => path.toLowerCase().endsWith(".py"));
+      setPreviewContainsPython(hasPython);
+      setPreviewTab(session.entry || !hasPython ? "preview" : "tests");
       setReloadCounter((counter) => counter + 1);
     } catch (err) {
       setPreviewToken("");
@@ -579,7 +596,11 @@ function App() {
 
   async function readWorkspaceFile(path: string) {
     const ext = path.split(".").pop()?.toLowerCase() ?? "";
-    if (!["txt", "md", "py", "js", "mjs", "css", "html", "htm", "json", "svg", "ts", "tsx", "yaml", "yml", "toml", "rs"].includes(ext)) return;
+    if (!["txt", "md", "py", "js", "mjs", "css", "html", "htm", "json", "svg", "ts", "tsx", "yaml", "yml", "toml", "rs"].includes(ext)) {
+      setSelectedFile({ path, content: "This file type is not available in the text preview." });
+      return;
+    }
+    setSelectedFile({ path, content: "Loading file…" });
     try {
       const url = new URL(`${API}/v1/workspace/read`);
       url.searchParams.set("workspacePath", workspace);
@@ -589,6 +610,13 @@ function App() {
       const result = await response.json() as { content: string; truncated: boolean };
       setSelectedFile({ path, content: result.content + (result.truncated ? "\n\n[Content truncated]" : "") });
     } catch (err) { setError(String(err)); }
+  }
+
+  function selectWorkspaceFile(path: string) {
+    setSelectedPath(path);
+    setPreviewTab("code");
+    setSelectedFile(null);
+    void readWorkspaceFile(path);
   }
 
   async function runWorkspaceTests() {
@@ -647,6 +675,7 @@ function App() {
         setFiles(await fetchWorkspaceFiles(selected));
         setShowResults(true);
         setSelectedFile(null);
+        setSelectedPath("");
         setTestsResult(null);
         await refreshPreview(selected);
       }
@@ -665,6 +694,8 @@ function App() {
     setPreviewContainsPython(false);
     setRunOutcome("");
     setSelectedFile(null);
+    setSelectedPath("");
+    setPreviewTab("preview");
     setTestsResult(null);
     setTestsConfirm(false);
     setPhaseStates(Object.fromEntries(phases.map((phase) => [phase, "pending"])));
@@ -731,6 +762,9 @@ function App() {
     setVerificationSummary(null);
     setFiles([]);
     setShowResults(false);
+    setSelectedFile(null);
+    setSelectedPath("");
+    setPreviewTab("preview");
     setError("");
     setStatusText("idle");
   }
@@ -1068,7 +1102,22 @@ function App() {
     "";
   const hasPreview = files.some((file) => !file.is_dir && file.path.toLowerCase() === "index.html");
   const hasPythonFiles = previewContainsPython || files.some((file) => !file.is_dir && file.path.toLowerCase().endsWith(".py"));
-  const previewStatusLabel = runOutcome === "completed" ? "Run completed" : runOutcome === "partial" ? "Run partial" : runOutcome === "failed" ? "Run failed" : "No run yet";
+  const previewStatusLabel = busy ? "Running" : runOutcome === "completed" ? "Completed" : runOutcome === "partial" ? "Partial" : runOutcome === "failed" ? "Failed" : "Ready";
+  const previewStatusTone = busy ? "running" : runOutcome;
+  const streamedFilesWritten = Array.from(new Set(phaseCards.flatMap((card) => card.filesWritten ?? [])));
+  const selectedFileExtension = selectedPath.split(".").pop()?.toLowerCase() ?? "";
+  const canShowSelectedFile = ["txt", "md", "py", "js", "mjs", "css", "html", "htm", "json", "svg", "ts", "tsx", "yaml", "yml", "toml", "rs"].includes(selectedFileExtension);
+
+  function fileTypeIcon(file: WorkspaceEntry) {
+    if (file.is_dir) return <FolderOpen size={15} />;
+    const extension = file.path.split(".").pop()?.toLowerCase() ?? "";
+    if (["html", "htm", "py"].includes(extension)) return <FileCode2 size={15} />;
+    if (["css", "js", "mjs", "ts", "tsx", "rs"].includes(extension)) return <Code2 size={15} />;
+    if (["json", "yaml", "yml", "toml"].includes(extension)) return <FileJson size={15} />;
+    if (["png", "jpg", "jpeg", "gif", "webp", "svg", "ico"].includes(extension)) return <FileImage size={15} />;
+    if (["txt", "md"].includes(extension)) return <FileText size={15} />;
+    return <File size={15} />;
+  }
 
   return (
     <main className="app-shell">
@@ -1107,91 +1156,121 @@ function App() {
 
       <section className="chat-area">
         {error && <div className="error-banner">{error}</div>}
-        {(taskHistory.length > 0 || referenceFiles.length > 0) && (
-          <div className="session-card">
-            <strong>Session context</strong>
-            <span>{taskHistory.length} request{taskHistory.length === 1 ? "" : "s"} in this session</span>
-            {referenceFiles.length > 0 && <span>{referenceFiles.length} attached spec/reference file{referenceFiles.length === 1 ? "" : "s"}</span>}
-            <small>{sessionId}</small>
-          </div>
-        )}
-        {phaseCards.length === 0 ? (
-          <div className="empty-run">
-            <span>{taskHistory.length > 0 ? "Ready for a follow-up" : "Ready"}</span>
-            <p>{taskHistory.length > 0 ? "Ask for a change, question, or improvement. Martinus will include this session history and the selected workspace context." : "Describe what you want to build. Martinus will run the local coding pipeline and write generated files into the selected workspace."}</p>
-          </div>
-        ) : (
-          phaseCards.map((card, index) => <PhaseCardView card={card} key={`${card.phase}-${index}`} />)
-        )}
+        <div className="narrow-pane-switch" role="tablist" aria-label="Workspace panels">
+          <button className={narrowPane === "progress" ? "active" : ""} onClick={() => setNarrowPane("progress")}>Progress &amp; Files</button>
+          <button className={narrowPane === "preview" ? "active" : ""} onClick={() => setNarrowPane("preview")}>Preview</button>
+        </div>
 
-        {verificationSummary && (
-          <div className={`verification-card ${verificationSummary.passed ? "passed" : "failed"}`}>
-            <div className="verification-title">
-              {verificationSummary.passed ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
-              <span>
-                <strong>{verificationSummary.passed ? "Verification passed" : "Verification needs attention"}</strong>
-                <small>Observable file and syntax checks—not hidden model reasoning.</small>
-              </span>
-            </div>
-            <div className="verification-stats">
-              <span>{verificationSummary.generatedFiles.length} generated file{verificationSummary.generatedFiles.length === 1 ? "" : "s"}</span>
-              <span>{verificationSummary.checks.filter((check) => check.ok).length}/{verificationSummary.checks.length} executable checks passed</span>
-              <span>{verificationSummary.missingFiles.length === 0 ? "No requested files missing" : `${verificationSummary.missingFiles.length} requested file(s) missing`}</span>
-            </div>
-            {verificationSummary.checks.length > 0 && (
-              <div className="verification-checks">
-                {verificationSummary.checks.map((check) => (
-                  <span className={check.ok ? "ok" : "bad"} key={`${check.file}-${check.kind}`} title={check.error || check.detail || check.kind}>
-                    {check.ok ? "✓" : "×"} {check.file} · {check.kind}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="summary-card workspace-results">
-          <div className="summary-header">
-            <span><strong>Generated files</strong><small>{workspace || "Workspace not selected"}</small></span>
-            <button onClick={() => revealInFinder(absoluteWorkspacePath())}><FolderOpen size={15} />Open workspace</button>
-          </div>
-          <div className="workspace-preview-grid">
-            <div className="generated-file-column">
-              <div className="file-list">
-                {files.map((file) => (
-                  <button key={file.path} onClick={() => { void revealInFinder(absoluteWorkspacePath(file)); void readWorkspaceFile(file.path); }}>
-                    {file.is_dir ? "Folder" : "File"}: {file.path}
-                  </button>
-                ))}
-                {showResults && files.length === 0 && <span className="preview-empty">No generated files found.</span>}
-              </div>
-              {selectedFile && <div className="selected-file"><strong>{selectedFile.path}</strong><pre>{selectedFile.content}</pre></div>}
-            </div>
-            <section className="live-preview-panel">
-              <header className="preview-panel-header">
-                <span><strong>Live Preview</strong><small className={`preview-status ${runOutcome}`}>{previewStatusLabel}</small></span>
-                <div className="preview-actions">
-                  <button onClick={() => { void refreshPreview(); }} disabled={!showResults || previewLoading}>Reload</button>
-                  <button onClick={previewGeneratedApp} disabled={!hasPreview}><Play size={14} />Open in browser</button>
-                </div>
-              </header>
-              {!showResults ? <p className="preview-empty">No preview yet</p> : previewLoading ? <p className="preview-empty">Loading...</p> : previewError ? <p className="preview-error">{previewError}</p> : hasPreview && previewToken ? (
-                <iframe title="Generated project preview" sandbox="allow-scripts" src={`${API}/preview/${previewToken}/index.html?v=${reloadCounter}`} />
-              ) : <p className="preview-empty">No index.html found</p>}
-              {hasPythonFiles && showResults && (
-                <div className="workspace-tests">
-                  <strong>Python tests</strong>
-                  {!testsConfirm ? <button onClick={() => setTestsConfirm(true)} disabled={testsLoading}>Run tests</button> : (
-                    <div className="test-confirm"><span>This runs the generated Python tests on your computer with your user permissions. Continue?</span>
-                      <button onClick={() => { void runWorkspaceTests(); }}>Continue</button><button onClick={() => setTestsConfirm(false)}>Cancel</button>
-                    </div>
-                  )}
-                  {testsLoading && <span className="test-running"><Loader2 size={14} className="spin" />Running tests...</span>}
-                  {testsResult && <><span className={`test-result ${testsResult.passed ? "passed" : testsResult.ran ? "failed" : ""}`}>{!testsResult.ran ? "No tests found" : testsResult.timedOut ? "Timed out" : testsResult.passed ? "Passed" : "Failed"}{testsResult.framework ? ` · ${testsResult.framework}` : ""} · {testsResult.durationMs} ms</span><pre className="test-output">{testsResult.output}</pre></>}
+        <div className={`workspace-layout show-${narrowPane}`}>
+          <aside className="workspace-progress-pane">
+            <div className="progress-section">
+              <div className="pane-section-heading"><strong>Run progress</strong><span className="count-badge">{phaseCards.length}</span></div>
+              {phaseCards.length === 0 ? (
+                <div className="progress-empty">{taskHistory.length > 0 ? "Ready for a follow-up" : "No run activity yet"}</div>
+              ) : (
+                <div className="phase-card-list">
+                  {phaseCards.map((card, index) => <PhaseCardView card={card} key={`${card.phase}-${index}`} />)}
                 </div>
               )}
-            </section>
-          </div>
+              {(taskHistory.length > 0 || referenceFiles.length > 0) && (
+                <div className="session-context" title={sessionId}>
+                  <span>{taskHistory.length} request{taskHistory.length === 1 ? "" : "s"}</span>
+                  {referenceFiles.length > 0 && <span>{referenceFiles.length} attached reference{referenceFiles.length === 1 ? "" : "s"}</span>}
+                </div>
+              )}
+              {verificationSummary && (
+                <div className={`verification-card ${verificationSummary.passed ? "passed" : "failed"}`}>
+                  <div className="verification-title">
+                    {verificationSummary.passed ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+                    <strong>{verificationSummary.passed ? "Verification passed" : "Verification needs attention"}</strong>
+                  </div>
+                  <div className="verification-stats">
+                    <span>{verificationSummary.generatedFiles.length} files</span>
+                    <span>{verificationSummary.checks.filter((check) => check.ok).length}/{verificationSummary.checks.length} checks</span>
+                    <span>{verificationSummary.missingFiles.length === 0 ? "No missing files" : `${verificationSummary.missingFiles.length} missing`}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="files-section">
+              <div className="pane-section-heading" title={workspace || "Workspace not selected"}>
+                <strong>Files</strong><span className="count-badge">{files.length}</span>
+                <button className="icon-button workspace-reveal" onClick={() => revealInFinder(absoluteWorkspacePath())} title="Open workspace" aria-label="Open workspace"><FolderOpen size={15} /></button>
+              </div>
+              <div className="workspace-file-list">
+                {files.map((file) => (
+                  <div className={`workspace-file-row ${selectedPath === file.path ? "selected" : ""}`} key={file.path}>
+                    <button className="workspace-file-select" onClick={() => selectWorkspaceFile(file.path)} title={file.path}>
+                      <span className="workspace-file-icon">{fileTypeIcon(file)}</span><span className="workspace-file-name">{file.name}</span>
+                    </button>
+                    <button className="file-reveal-button" onClick={() => revealInFinder(absoluteWorkspacePath(file))} title="Reveal in Finder" aria-label={`Reveal ${file.name}`}><ExternalLink size={13} /></button>
+                  </div>
+                ))}
+                {files.length === 0 && <span className="files-empty">{showResults ? "No files found" : "Files will appear here"}</span>}
+              </div>
+            </div>
+          </aside>
+
+          <section className="workspace-preview-pane">
+            <header className="preview-toolbar">
+              <div className="preview-tabs" role="tablist" aria-label="Preview content">
+                <button role="tab" aria-selected={previewTab === "preview"} className={previewTab === "preview" ? "active" : ""} onClick={() => setPreviewTab("preview")}><Eye size={14} />Preview</button>
+                <button role="tab" aria-selected={previewTab === "code"} className={previewTab === "code" ? "active" : ""} onClick={() => setPreviewTab("code")}><Code2 size={14} />Code</button>
+                {hasPythonFiles && <button role="tab" aria-selected={previewTab === "tests"} className={previewTab === "tests" ? "active" : ""} onClick={() => setPreviewTab("tests")}><FlaskConical size={14} />Tests</button>}
+              </div>
+              <span className="preview-selected-name" title={selectedPath}>{previewTab === "code" ? selectedPath || "Select a file" : ""}</span>
+              <div className="preview-toolbar-actions">
+                <button className="icon-button" onClick={() => { void refreshPreview(); }} disabled={!showResults || previewLoading} title="Reload preview" aria-label="Reload preview"><RefreshCw size={15} /></button>
+                <button className="icon-button" onClick={previewGeneratedApp} disabled={!hasPreview} title="Open in browser" aria-label="Open in browser"><ExternalLink size={15} /></button>
+                <span className={`run-status ${previewStatusTone}`}><i />{previewStatusLabel}</span>
+              </div>
+            </header>
+
+            <div className={`preview-content ${previewTab}`}>
+              {previewTab === "preview" && (
+                <div className="preview-body">
+                  {busy ? (
+                    <div className="preview-placeholder running-placeholder">
+                      <div className="preview-skeleton"><i /><i /><i /></div>
+                      <strong>Your app will appear here</strong>
+                      <span>Run a task to generate it.</span>
+                      <small>{streamedFilesWritten.length ? `Files written: ${streamedFilesWritten.length}` : "Waiting for files…"}</small>
+                    </div>
+                  ) : !showResults ? (
+                    <div className="preview-placeholder"><strong>Your app will appear here</strong><span>Run a task to generate it.</span></div>
+                  ) : previewLoading ? (
+                    <div className="preview-placeholder"><span>Loading…</span></div>
+                  ) : previewError ? (
+                    <div className="preview-placeholder preview-error-state"><strong>Preview could not be loaded</strong><span>{previewError}</span><button className="retry-button" onClick={() => { void refreshPreview(); }}>Retry</button></div>
+                  ) : hasPreview && previewToken ? (
+                    <iframe title="Generated project preview" sandbox="allow-scripts" src={`${API}/preview/${previewToken}/index.html?v=${reloadCounter}`} />
+                  ) : (
+                    <div className="preview-placeholder"><strong>No index.html in this project</strong>{hasPythonFiles && <span>Open the Tests tab to run the generated Python tests.</span>}</div>
+                  )}
+                </div>
+              )}
+              {previewTab === "code" && (
+                <div className="code-view">
+                  {selectedFile ? <pre>{selectedFile.content}</pre> : <div className="preview-placeholder"><span>{selectedPath && !canShowSelectedFile ? "This file type is not available in the text preview." : "Select a file to view its contents."}</span></div>}
+                </div>
+              )}
+              {previewTab === "tests" && hasPythonFiles && (
+                <div className="tests-view">
+                  <div className="tests-card">
+                    <div className="tests-title"><FlaskConical size={17} /><strong>Python tests</strong></div>
+                    {!testsConfirm ? <button className="run-tests-button" onClick={() => setTestsConfirm(true)} disabled={testsLoading}>Run tests</button> : (
+                      <div className="test-confirm"><span>This runs the generated Python tests on your computer with your user permissions. Continue?</span>
+                        <button onClick={() => { void runWorkspaceTests(); }}>Continue</button><button onClick={() => setTestsConfirm(false)}>Cancel</button>
+                      </div>
+                    )}
+                    {testsLoading && <span className="test-running"><Loader2 size={14} className="spin" />Running tests…</span>}
+                    {testsResult && <><span className={`test-result ${testsResult.passed ? "passed" : testsResult.ran ? "failed" : ""}`}>{!testsResult.ran ? "No tests found" : testsResult.timedOut ? "Timed out" : testsResult.passed ? "Passed" : "Failed"}{testsResult.framework ? ` · ${testsResult.framework}` : ""} · {testsResult.durationMs} ms</span><pre className="test-output">{testsResult.output}</pre></>}
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
         </div>
       </section>
 
