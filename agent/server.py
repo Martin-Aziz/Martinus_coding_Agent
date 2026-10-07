@@ -295,7 +295,9 @@ def _validated_workspace(workspace_path: str) -> pathlib.Path:
 
 
 @app.post("/v1/preview/session")
-async def create_preview_session(request: Request, req: WorkspacePathRequest) -> dict[str, Any]:
+async def create_preview_session(
+    request: Request, req: WorkspacePathRequest
+) -> dict[str, Any]:
     _check_api_key(request)
     workspace = _validated_workspace(req.workspacePath)
     for old_token, old_workspace in list(_PREVIEW_SESSIONS.items()):
@@ -324,7 +326,9 @@ async def create_preview_session(request: Request, req: WorkspacePathRequest) ->
             continue
     return {
         "token": token,
-        "entry": "index.html" if (workspace / "index.html").is_file() else None,
+        "entry": (
+            "index.html" if (workspace / "index.html").is_file() else None
+        ),
         "files": sorted(entries),
     }
 
@@ -333,7 +337,9 @@ async def create_preview_session(request: Request, req: WorkspacePathRequest) ->
 async def serve_preview(token: str, path: str = "") -> Response:
     workspace = _PREVIEW_SESSIONS.get(token)
     if workspace is None:
-        raise HTTPException(status_code=404, detail="preview session not found")
+        raise HTTPException(
+            status_code=404, detail="preview session not found"
+        )
     rel = path or "index.html"
     requested = pathlib.PurePosixPath(rel)
     windows_path = PureWindowsPath(rel)
@@ -357,14 +363,21 @@ async def serve_preview(token: str, path: str = "") -> Response:
             target = target.resolve(strict=True)
             target.relative_to(workspace)
         except (OSError, ValueError):
-            raise HTTPException(status_code=404, detail="preview path not found")
-    if not target.is_file() or target.suffix.lower() not in _PREVIEW_EXTENSIONS:
+            raise HTTPException(
+                status_code=404, detail="preview path not found"
+            )
+    if (
+        not target.is_file()
+        or target.suffix.lower() not in _PREVIEW_EXTENSIONS
+    ):
         raise HTTPException(status_code=404, detail="preview path not found")
     try:
         with target.open("rb") as preview_file:
             content = preview_file.read(_MAX_LIVE_PREVIEW_BYTES + 1)
         if len(content) > _MAX_LIVE_PREVIEW_BYTES:
-            raise HTTPException(status_code=413, detail="preview file exceeds 5 MB limit")
+            raise HTTPException(
+                status_code=413, detail="preview file exceeds 5 MB limit"
+            )
     except OSError:
         raise HTTPException(status_code=404, detail="preview path not found")
     return Response(
@@ -377,7 +390,9 @@ async def serve_preview(token: str, path: str = "") -> Response:
 
 
 @app.post("/v1/workspace/tests")
-async def run_workspace_tests_route(request: Request, req: WorkspacePathRequest) -> dict[str, Any]:
+async def run_workspace_tests_route(
+    request: Request, req: WorkspacePathRequest
+) -> dict[str, Any]:
     _check_api_key(request)
     workspace = _validated_workspace(req.workspacePath)
     started = time.monotonic()
@@ -397,7 +412,10 @@ async def run_workspace_tests_route(request: Request, req: WorkspacePathRequest)
             "durationMs": duration_ms,
         }
     command = result.get("command", "")
-    timed_out = result.get("returncode") == -1 and "timed out" in result.get("output", "")
+    timed_out = (
+        result.get("returncode") == -1
+        and "timed out" in result.get("output", "")
+    )
     return {
         "ran": True,
         "passed": bool(result.get("passed")),

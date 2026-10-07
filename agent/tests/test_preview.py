@@ -118,7 +118,8 @@ def test_preview_directory_without_index_and_oversized_file(
     )
     preview = session(client, workspace)
     assert client.get(f"/preview/{preview['token']}/empty").status_code == 404
-    assert client.get(f"/preview/{preview['token']}/large.txt").status_code == 413
+    response = client.get(f"/preview/{preview['token']}/large.txt")
+    assert response.status_code == 413
 
 
 def test_workspace_tests_pass_fail_and_no_tests(
