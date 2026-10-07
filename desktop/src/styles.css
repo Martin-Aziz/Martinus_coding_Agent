@@ -712,6 +712,31 @@ button:disabled {
   gap: var(--s2);
 }
 
+.workspace-preview-grid { display: grid; grid-template-columns: minmax(220px, 35fr) minmax(0, 65fr); gap: var(--s4); align-items: start; }
+.generated-file-column, .live-preview-panel { min-width: 0; }
+.live-preview-panel { border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-card); }
+.preview-panel-header { display: flex; justify-content: space-between; align-items: center; gap: var(--s3); padding: var(--s3); border-bottom: 1px solid var(--border); }
+.preview-panel-header > span { display: flex; flex-direction: column; gap: 3px; }
+.preview-panel-header strong { font-family: var(--font-head); }
+.preview-status, .test-result { color: var(--text-muted); font: 600 0.68rem var(--font-mono); }
+.preview-status.completed, .test-result.passed { color: var(--success); }
+.preview-status.partial { color: #d97706; }
+.preview-status.failed, .test-result.failed { color: var(--error); }
+.preview-actions { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.preview-actions button, .workspace-tests button, .test-confirm button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border-hi); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text); font: 600 0.68rem var(--font-mono); padding: 6px 9px; }
+.preview-actions button:disabled { opacity: 0.45; }
+.live-preview-panel iframe { display: block; width: 100%; height: 390px; border: 0; background: white; }
+.preview-empty, .preview-error { display: block; margin: 0; padding: var(--s5); color: var(--text-muted); font-size: 0.78rem; }
+.preview-error { color: var(--error); font-family: var(--font-mono); overflow-wrap: anywhere; }
+.selected-file, .workspace-tests { margin-top: var(--s3); padding: var(--s3); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.selected-file strong, .workspace-tests > strong { display: block; margin-bottom: var(--s2); font: 600 0.72rem var(--font-mono); }
+.selected-file pre, .test-output { max-height: 230px; overflow: auto; margin: 0; padding: var(--s3); border-radius: var(--radius-sm); background: #0b1020; color: #dbeafe; white-space: pre-wrap; overflow-wrap: anywhere; font: 0.68rem/1.5 var(--font-mono); }
+.workspace-tests { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2); }
+.test-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); color: var(--text-muted); font-size: 0.72rem; }
+.test-running { display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); font: 0.7rem var(--font-mono); }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
 .file-list button {
   max-width: 100%;
   color: var(--text-muted);
@@ -1132,6 +1157,9 @@ select:focus {
   body {
     min-width: 640px;
   }
+
+  .workspace-preview-grid { grid-template-columns: minmax(0, 1fr); }
+  .live-preview-panel iframe { height: 340px; }
 
   .brand-copy small {
     display: none;

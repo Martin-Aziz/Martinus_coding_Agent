@@ -62,6 +62,12 @@ type WorkspaceEntry = {
   size: number;
 };
 
+type PreviewSession = { token: string; entry: string | null; files: string[] };
+type WorkspaceTestResult = {
+  ran: boolean; passed: boolean | null; timedOut: boolean; output: string;
+  framework: "pytest" | "unittest" | null; durationMs: number;
+};
+
 type ReferenceFile = {
   name: string;
   path: string;
@@ -360,6 +366,16 @@ function App() {
   // Gating on this instead of files.length stops the previous run's app from
   // being offered for preview while a new run is still mid-pipeline.
   const [showResults, setShowResults] = React.useState(false);
+  const [previewToken, setPreviewToken] = React.useState("");
+  const [previewError, setPreviewError] = React.useState("");
+  const [previewLoading, setPreviewLoading] = React.useState(false);
+  const [previewContainsPython, setPreviewContainsPython] = React.useState(false);
+  const [reloadCounter, setReloadCounter] = React.useState(0);
+  const [runOutcome, setRunOutcome] = React.useState<"completed" | "partial" | "failed" | "">("");
+  const [selectedFile, setSelectedFile] = React.useState<{ path: string; content: string } | null>(null);
+  const [testsConfirm, setTestsConfirm] = React.useState(false);
+  const [testsLoading, setTestsLoading] = React.useState(false);
+  const [testsResult, setTestsResult] = React.useState<WorkspaceTestResult | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [statusText, setStatusText] = React.useState("idle");
   const [serviceMessage, setServiceMessage] = React.useState("");
@@ -539,6 +555,58 @@ function App() {
     setFiles(await fetchWorkspaceFiles(targetWorkspace));
   }
 
+  async function refreshPreview(targetWorkspace = workspace) {
+    if (!targetWorkspace) return;
+    setPreviewLoading(true);
+    setPreviewError("");
+    try {
+      const response = await fetch(`${API}/v1/preview/session`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspacePath: targetWorkspace })
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const session = await response.json() as PreviewSession;
+      setPreviewToken(session.token);
+      setPreviewContainsPython(session.files.some((path) => path.toLowerCase().endsWith(".py")));
+      setReloadCounter((counter) => counter + 1);
+    } catch (err) {
+      setPreviewToken("");
+      setPreviewError(String(err));
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  async function readWorkspaceFile(path: string) {
+    const ext = path.split(".").pop()?.toLowerCase() ?? "";
+    if (!["txt", "md", "py", "js", "mjs", "css", "html", "htm", "json", "svg", "ts", "tsx", "yaml", "yml", "toml", "rs"].includes(ext)) return;
+    try {
+      const url = new URL(`${API}/v1/workspace/read`);
+      url.searchParams.set("workspacePath", workspace);
+      url.searchParams.set("path", path);
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(await response.text());
+      const result = await response.json() as { content: string; truncated: boolean };
+      setSelectedFile({ path, content: result.content + (result.truncated ? "\n\n[Content truncated]" : "") });
+    } catch (err) { setError(String(err)); }
+  }
+
+  async function runWorkspaceTests() {
+    setTestsConfirm(false);
+    setTestsLoading(true);
+    setTestsResult(null);
+    try {
+      const response = await fetch(`${API}/v1/workspace/tests`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspacePath: workspace })
+      });
+      if (!response.ok) throw new Error(await response.text());
+      setTestsResult(await response.json() as WorkspaceTestResult);
+    } catch (err) {
+      setTestsResult({ ran: true, passed: false, timedOut: false, output: String(err), framework: null, durationMs: 0 });
+    } finally { setTestsLoading(false); }
+  }
+
   function absoluteWorkspacePath(entry?: WorkspaceEntry) {
     const base = workspace.replace(/\/+$/, "");
     return entry ? `${base}/${entry.path}` : base;
@@ -588,6 +656,13 @@ function App() {
     setVerificationSummary(null);
     setFiles([]);
     setShowResults(false);
+    setPreviewToken("");
+    setPreviewError("");
+    setPreviewContainsPython(false);
+    setRunOutcome("");
+    setSelectedFile(null);
+    setTestsResult(null);
+    setTestsConfirm(false);
     setPhaseStates(Object.fromEntries(phases.map((phase) => [phase, "pending"])));
   }
 
@@ -933,6 +1008,8 @@ function App() {
               setVerificationSummary(event.verification as VerificationSummary);
             }
             setStatusText("done");
+            setRunOutcome(event.status === "success" || event.success === true ? "completed" : event.status === "aborted" ? "partial" : "failed");
+            await refreshPreview(runWorkspace);
           }
         }
       }
@@ -954,6 +1031,7 @@ function App() {
       } : card));
       setError(msg);
       setStatusText("error");
+      if (runWorkspace) setRunOutcome("failed");
     } finally {
       stopTokenFlush();
       // Always refresh files at the end — even on failure/cancel, partial output
@@ -985,6 +1063,8 @@ function App() {
     busy ? "Martinus is already running." :
     "";
   const hasPreview = files.some((file) => !file.is_dir && file.path.toLowerCase() === "index.html");
+  const hasPythonFiles = previewContainsPython || files.some((file) => !file.is_dir && file.path.toLowerCase().endsWith(".py"));
+  const previewStatusLabel = runOutcome === "completed" ? "Run completed" : runOutcome === "partial" ? "Run partial" : runOutcome === "failed" ? "Run failed" : "No run yet";
 
   return (
     <main className="app-shell">
@@ -1066,33 +1146,49 @@ function App() {
           </div>
         )}
 
-        {showResults && files.length > 0 && (
-          <div className="summary-card">
-            <div className="summary-header">
-              <span>
-                <strong>Generated files</strong>
-                <small>{workspace}</small>
-              </span>
-              <button onClick={() => revealInFinder(absoluteWorkspacePath())}>
-                <FolderOpen size={15} />
-                Open workspace
-              </button>
-              {hasPreview && (
-                <button onClick={previewGeneratedApp}>
-                  <Play size={15} />
-                  Preview app
-                </button>
-              )}
-            </div>
-            <div className="file-list">
-              {files.map((file) => (
-                <button key={file.path} onClick={() => revealInFinder(absoluteWorkspacePath(file))}>
-                  {file.is_dir ? "Folder" : "File"}: {file.path}
-                </button>
-              ))}
-            </div>
+        <div className="summary-card workspace-results">
+          <div className="summary-header">
+            <span><strong>Generated files</strong><small>{workspace || "Workspace not selected"}</small></span>
+            <button onClick={() => revealInFinder(absoluteWorkspacePath())}><FolderOpen size={15} />Open workspace</button>
           </div>
-        )}
+          <div className="workspace-preview-grid">
+            <div className="generated-file-column">
+              <div className="file-list">
+                {files.map((file) => (
+                  <button key={file.path} onClick={() => { void revealInFinder(absoluteWorkspacePath(file)); void readWorkspaceFile(file.path); }}>
+                    {file.is_dir ? "Folder" : "File"}: {file.path}
+                  </button>
+                ))}
+                {showResults && files.length === 0 && <span className="preview-empty">No generated files found.</span>}
+              </div>
+              {selectedFile && <div className="selected-file"><strong>{selectedFile.path}</strong><pre>{selectedFile.content}</pre></div>}
+            </div>
+            <section className="live-preview-panel">
+              <header className="preview-panel-header">
+                <span><strong>Live Preview</strong><small className={`preview-status ${runOutcome}`}>{previewStatusLabel}</small></span>
+                <div className="preview-actions">
+                  <button onClick={() => { void refreshPreview(); }} disabled={!showResults || previewLoading}>Reload</button>
+                  <button onClick={previewGeneratedApp} disabled={!hasPreview}><Play size={14} />Open in browser</button>
+                </div>
+              </header>
+              {!showResults ? <p className="preview-empty">No preview yet</p> : previewLoading ? <p className="preview-empty">Loading...</p> : previewError ? <p className="preview-error">{previewError}</p> : hasPreview && previewToken ? (
+                <iframe title="Generated project preview" sandbox="allow-scripts" src={`${API}/preview/${previewToken}/index.html?v=${reloadCounter}`} />
+              ) : <p className="preview-empty">No index.html found</p>}
+              {hasPythonFiles && showResults && (
+                <div className="workspace-tests">
+                  <strong>Python tests</strong>
+                  {!testsConfirm ? <button onClick={() => setTestsConfirm(true)} disabled={testsLoading}>Run tests</button> : (
+                    <div className="test-confirm"><span>This runs the generated Python tests on your computer with your user permissions. Continue?</span>
+                      <button onClick={() => { void runWorkspaceTests(); }}>Continue</button><button onClick={() => setTestsConfirm(false)}>Cancel</button>
+                    </div>
+                  )}
+                  {testsLoading && <span className="test-running"><Loader2 size={14} className="spin" />Running tests...</span>}
+                  {testsResult && <><span className={`test-result ${testsResult.passed ? "passed" : testsResult.ran ? "failed" : ""}`}>{!testsResult.ran ? "No tests found" : testsResult.timedOut ? "Timed out" : testsResult.passed ? "Passed" : "Failed"}{testsResult.framework ? ` · ${testsResult.framework}` : ""} · {testsResult.durationMs} ms</span><pre className="test-output">{testsResult.output}</pre></>}
+                </div>
+              )}
+            </section>
+          </div>
+        </div>
       </section>
 
       <footer className="input-bar">
