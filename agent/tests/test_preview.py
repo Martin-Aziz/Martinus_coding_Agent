@@ -21,20 +21,28 @@ def make_workspace(tmp_path: Path) -> Path:
 
 
 def session(client: TestClient, workspace: Path) -> dict[str, Any]:
-    response = client.post("/v1/preview/session", json={"workspacePath": str(workspace)})
+    response = client.post(
+        "/v1/preview/session", json={"workspacePath": str(workspace)}
+    )
     assert response.status_code == 200, response.text
     return response.json()
 
 
-def test_preview_serves_files_with_security_headers(client: TestClient, tmp_path: Path) -> None:
+def test_preview_serves_files_with_security_headers(
+    client: TestClient, tmp_path: Path
+) -> None:
     workspace = make_workspace(tmp_path)
     (workspace / "index.html").write_text(
         '<link rel="stylesheet" href="style.css">'
         '<script src="script.js"></script>',
         encoding="utf-8",
     )
-    (workspace / "style.css").write_text("body { color: red }", encoding="utf-8")
-    (workspace / "script.js").write_text("window.ready = true", encoding="utf-8")
+    (workspace / "style.css").write_text(
+        "body { color: red }", encoding="utf-8"
+    )
+    (workspace / "script.js").write_text(
+        "window.ready = true", encoding="utf-8"
+    )
     preview = session(client, workspace)
 
     assets = (
@@ -49,7 +57,9 @@ def test_preview_serves_files_with_security_headers(client: TestClient, tmp_path
         assert response.headers["content-security-policy"].startswith(
             "sandbox allow-scripts; default-src 'none'"
         )
-        assert "connect-src 'none'" in response.headers["content-security-policy"]
+        assert "connect-src 'none'" in response.headers[
+            "content-security-policy"
+        ]
         assert "frame-ancestors" in response.headers["content-security-policy"]
         assert response.headers["x-content-type-options"] == "nosniff"
         assert response.headers["cache-control"] == "no-store"
@@ -75,14 +85,17 @@ def test_preview_rejects_traversal_and_absolute_paths(
     assert response.status_code in (400, 404)
 
 
-def test_preview_rejects_symlinks_outside_workspace(client: TestClient, tmp_path: Path) -> None:
+def test_preview_rejects_symlinks_outside_workspace(
+    client: TestClient, tmp_path: Path
+) -> None:
     workspace = make_workspace(tmp_path)
     outside = tmp_path / "secret.txt"
     outside.write_text("secret", encoding="utf-8")
     (workspace / "index.html").write_text("ok", encoding="utf-8")
     (workspace / "escape.txt").symlink_to(outside)
     preview = session(client, workspace)
-    assert client.get(f"/preview/{preview['token']}/escape.txt").status_code == 404
+    response = client.get(f"/preview/{preview['token']}/escape.txt")
+    assert response.status_code == 404
 
 
 @pytest.mark.parametrize("name", ["secret.py", ".env", "data.db"])
@@ -100,13 +113,17 @@ def test_preview_directory_without_index_and_oversized_file(
 ) -> None:
     workspace = make_workspace(tmp_path)
     (workspace / "empty").mkdir()
-    (workspace / "large.txt").write_bytes(b"x" * (5 * 1024 * 1024 + 1))
+    (workspace / "large.txt").write_bytes(
+        b"x" * (5 * 1024 * 1024 + 1)
+    )
     preview = session(client, workspace)
     assert client.get(f"/preview/{preview['token']}/empty").status_code == 404
     assert client.get(f"/preview/{preview['token']}/large.txt").status_code == 413
 
 
-def test_workspace_tests_pass_fail_and_no_tests(client: TestClient, tmp_path: Path) -> None:
+def test_workspace_tests_pass_fail_and_no_tests(
+    client: TestClient, tmp_path: Path
+) -> None:
     workspace = make_workspace(tmp_path)
     no_tests = client.post(
         "/v1/workspace/tests", json={"workspacePath": str(workspace)}
@@ -122,7 +139,9 @@ def test_workspace_tests_pass_fail_and_no_tests(client: TestClient, tmp_path: Pa
         "/v1/workspace/tests", json={"workspacePath": str(workspace)}
     ).json()
     assert passed["ran"] is True and passed["passed"] is True
-    failing_source = test_source.replace("self.assertEqual(1, 1)", "self.assertEqual(1, 2)")
+    failing_source = test_source.replace(
+        "self.assertEqual(1, 1)", 'self.fail("expected failure")'
+    )
     (workspace / "test_sample.py").write_text(failing_source, encoding="utf-8")
     failed = client.post(
         "/v1/workspace/tests", json={"workspacePath": str(workspace)}
@@ -134,9 +153,13 @@ def test_workspace_test_timeout_is_bounded(
     client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     workspace = make_workspace(tmp_path)
-    (workspace / "test_hang.py").write_text("while True: pass\n", encoding="utf-8")
+    (workspace / "test_hang.py").write_text(
+        "while True: pass\n", encoding="utf-8"
+    )
     monkeypatch.setattr(server, "_WORKSPACE_TEST_TIMEOUT_SECONDS", 0.2)
-    result = client.post("/v1/workspace/tests", json={"workspacePath": str(workspace)}).json()
+    result = client.post(
+        "/v1/workspace/tests", json={"workspacePath": str(workspace)}
+    ).json()
     assert result["timedOut"] is True
 
 
