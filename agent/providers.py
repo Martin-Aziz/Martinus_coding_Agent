@@ -11,13 +11,12 @@ from __future__ import annotations
 import json
 import os
 import threading
+import tempfile
 import time
 from dataclasses import dataclass, field
 from typing import Callable, Iterator, Optional
 
 import httpx
-
-from . import response_cache as _response_cache
 
 FALLBACK_RETRY_INSTRUCTION = (
     "\n\nPrevious attempt failed. Before retrying: "
@@ -403,7 +402,6 @@ class Router:
             "completion_tokens": 0,
             "total_tokens": 0,
         }
-        self._cost_usd: float = 0.0
         # Optional Claude Code provider. It remains disabled unless explicitly
         # enabled with MARTINUS_ENABLE_CLAUDE_ADAPTER=1.
         self._claude: Optional["ClaudeCodeClient"] = None
@@ -422,33 +420,6 @@ class Router:
 
     def chat(self, provider: str, req: ChatRequest) -> ChatResponse:
         r = self.resolve(provider)
-
-        # Semantic response cache (opt-in, near-deterministic requests only).
-        # A hit skips the model call entirely — zero tokens, near-zero latency.
-        cache_key = ""
-        cache_on = _response_cache.is_enabled() and _response_cache.cacheable(req.temperature)
-        if cache_on:
-            cache_key = _response_cache.make_key(
-                r, req.model, req.temperature,
-                [{"role": m.role, "content": m.content} for m in req.messages],
-            )
-            hit = _response_cache.get(cache_key)
-            if hit is not None:
-                content = str(hit.get("content", ""))
-                # Replay the whole content as one token so a streaming caller
-                # (UI progress) still sees output on a cache hit.
-                if req.on_token is not None and content:
-                    try:
-                        req.on_token(content)
-                    except Exception:
-                        pass
-                self._usage["cache_hits"] = self._usage.get("cache_hits", 0) + 1
-                return ChatResponse(
-                    provider=r, model=str(hit.get("model", req.model or r)),
-                    content=content,
-                    prompt_tokens=0, completion_tokens=0, total_tokens=0,
-                )
-
         # Serialize model requests machine-wide (hardware safety on 24GB
         # unified memory). Bounded wait so a wedged holder cannot block forever.
         acquired = _MODEL_CALL_SEMAPHORE.acquire(timeout=_READ_TIMEOUT + 120.0)
@@ -484,23 +455,11 @@ class Router:
         self._usage["prompt_tokens"] += response.prompt_tokens
         self._usage["completion_tokens"] += response.completion_tokens
         self._usage["total_tokens"] += response.total_tokens
-        # Accumulate cost if the provider exposed it (Claude adapter only for now).
-        if hasattr(self._claude, "_last_cost_usd") and self._claude is not None:
-            self._cost_usd = self._claude._last_cost_usd
-        # Store to cache on success (only non-empty content is worth replaying).
-        if cache_on and cache_key and response.content:
-            _response_cache.put(cache_key, {
-                "content": response.content,
-                "model": response.model,
-            })
         return response
 
     def usage_totals(self) -> dict[str, int]:
         """Return cumulative measurement-only usage for this Router instance."""
-        totals: dict[str, int] = dict(self._usage)
-        if self._cost_usd:
-            totals["cost_usd_cents"] = int(self._cost_usd * 100)
-        return totals
+        return dict(self._usage)
 
     def health(self, provider: str) -> ProviderHealth:
         r = self.resolve(provider)
@@ -537,23 +496,23 @@ class Router:
 class ClaudeCodeClient:
     """Adapter that shells out to the local `claude` CLI for each chat call.
 
-    Each request becomes one `claude -p --output-format json` subprocess.
-    Streaming is not implemented — the CLI does support --output-format
-    stream-json but a subprocess-per-call keeps this adapter reversible and
-    matches the semantics of the Ollama non-streaming path.
+    Claude Code is used as a text model: it receives phase instructions as
+    the actual system prompt, has no tools enabled, and returns text for the
+    orchestrator to parse and write. Every call runs from an empty temporary
+    directory so Claude cannot infer or inspect the selected workspace.
     """
 
     def __init__(self) -> None:
         import shutil
         self._binary = os.getenv("MARTINUS_CLAUDE_BINARY", "").strip() or shutil.which("claude") or "claude"
-        # Extra flags — appended AFTER `-p`. Useful for pinning a model
+        # Extra flags are retained for options such as model selection. The
+        # adapter's no-tools, prompt, print, and output-format flags are added
+        # after these so the text-only contract stays authoritative.
+        # Useful for pinning a model
         # (--model claude-sonnet-5) if you want to.
         extra = os.getenv("MARTINUS_CLAUDE_ARGS", "").strip()
         self._extra_args: list[str] = extra.split() if extra else []
         self._per_call_timeout = float(os.getenv("MARTINUS_CLAUDE_TIMEOUT", "300"))
-        # Cumulative cost (USD) across all calls, summed from the CLI's
-        # total_cost_usd envelope field. Read by Router for usage_totals().
-        self._last_cost_usd: float = 0.0
         # Cache for health probes.
         self._cache = _TTLCache()
 
@@ -597,8 +556,6 @@ class ClaudeCodeClient:
     def chat(self, req: ChatRequest) -> ChatResponse:
         import subprocess
 
-        # Merge system + user into one prompt. The CLI's -p mode takes a single
-        # prompt string; we prepend the system role as a labeled preamble.
         system_content = ""
         user_content = ""
         for msg in req.messages:
@@ -606,40 +563,40 @@ class ClaudeCodeClient:
                 system_content = msg.content
             elif msg.role == "user":
                 user_content = msg.content
-        merged = (
-            f"[SYSTEM INSTRUCTIONS]\n{system_content}\n\n[USER REQUEST]\n{user_content}"
-            if system_content
-            else user_content
-        )
-
         streaming = req.on_token is not None
 
         if streaming:
-            # Live path: --output-format stream-json emits one JSON object per
-            # event. Parse assistant text.deltas and forward them as tokens so
-            # the UI sees a real progress bar instead of a 60s spinner.
-            content, model_name, err, prompt_tokens, completion_tokens = self._chat_streaming(
-                merged, req.on_token
+            # Keep the router callback contract while honoring the provider's
+            # plain-text-only output mode. Claude emits the completed response
+            # in one callback when print mode exits.
+            content, model_name, err = self._chat_streaming(
+                system_content, user_content, req.on_token
             )
             if err:
                 raise RuntimeError(err)
-            return ChatResponse(
-                provider="claude", model=model_name, content=content,
-                prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
-                total_tokens=prompt_tokens + completion_tokens,
-            )
+            return ChatResponse(provider="claude", model=model_name, content=content)
 
-        # Non-streaming path: single subprocess, single JSON envelope.
-        cmd = [self._binary, "-p", "--output-format", "json"]
+        # Non-streaming path: plain text response, no JSON envelope.
+        cmd = [self._binary]
         cmd.extend(self._extra_args)
+        cmd.extend([
+            "--safe-mode",
+            "--strict-mcp-config",
+            "--tools", "",
+            "--system-prompt", system_content,
+            "--permission-prompts", "none",
+            "-p", "--output-format", "text",
+        ])
         try:
-            proc = subprocess.run(
-                cmd,
-                input=merged,
-                capture_output=True,
-                text=True,
-                timeout=self._per_call_timeout,
-            )
+            with tempfile.TemporaryDirectory(prefix="martinus-claude-") as neutral_cwd:
+                proc = subprocess.run(
+                    cmd,
+                    input=user_content,
+                    capture_output=True,
+                    text=True,
+                    timeout=self._per_call_timeout,
+                    cwd=neutral_cwd,
+                )
         except subprocess.TimeoutExpired:
             raise RuntimeError(
                 f"claude CLI timed out after {self._per_call_timeout}s"
@@ -653,225 +610,64 @@ class ClaudeCodeClient:
             raise RuntimeError(
                 f"claude CLI exited {proc.returncode}: {proc.stderr.strip()[:400]}"
             )
-        content = ""
+        content = proc.stdout.strip()
         model_name = "claude-code"
-        prompt_tokens = 0
-        completion_tokens = 0
-        raw_out = proc.stdout.strip()
-        if raw_out:
-            try:
-                envelope = json.loads(raw_out)
-                if isinstance(envelope, dict):
-                    content = str(
-                        envelope.get("result")
-                        or envelope.get("text")
-                        or envelope.get("content")
-                        or ""
-                    ).strip()
-                    model_name = str(envelope.get("model") or model_name)
-                    # Priority 5: extract token usage from the Claude CLI envelope.
-                    # The CLI emits usage under either 'usage' or 'modelUsage'.
-                    usage_block = envelope.get("usage") or {}
-                    if isinstance(usage_block, dict):
-                        prompt_tokens = (
-                            usage_block.get("input_tokens", 0)
-                            + usage_block.get("cache_read_input_tokens", 0)
-                            + usage_block.get("cache_creation_input_tokens", 0)
-                        )
-                        completion_tokens = usage_block.get("output_tokens", 0)
-                    # cost_usd from total_cost_usd field
-                    _cost = float(envelope.get("total_cost_usd") or 0.0)
-                    if _cost:
-                        self._last_cost_usd = getattr(self, "_last_cost_usd", 0.0) + _cost
-                else:
-                    content = raw_out
-            except json.JSONDecodeError:
-                content = raw_out
         if not content:
             raise RuntimeError(
                 "claude CLI returned an empty response. "
                 f"stderr: {proc.stderr.strip()[:200]}"
             )
         self._cache.invalidate("health")
-        return ChatResponse(
-            provider="claude", model=model_name, content=content,
-            prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
-            total_tokens=prompt_tokens + completion_tokens,
-        )
+        return ChatResponse(provider="claude", model=model_name, content=content)
 
     def _chat_streaming(
-        self, merged_prompt: str, on_token: Callable[[str], None]
-    ) -> tuple[str, str, str, int, int]:
-        """Run `claude -p --output-format stream-json --verbose` and forward
-        assistant text chunks to on_token as they arrive. Returns
-        (full_content, model_name, error_message, prompt_tokens, completion_tokens).
-        If error_message is non-empty the caller should raise it."""
+        self, system_prompt: str, user_prompt: str, on_token: Callable[[str], None]
+    ) -> tuple[str, str, str]:
+        """Run the text-only CLI path and forward its plain text response."""
         import subprocess
-        import threading
 
-        cmd = [
-            self._binary, "-p",
-            "--output-format", "stream-json",
-            "--verbose",   # required by the CLI when using stream-json
-        ]
+        cmd = [self._binary]
         cmd.extend(self._extra_args)
+        cmd.extend([
+            "--safe-mode",
+            "--strict-mcp-config",
+            "--tools", "",
+            "--system-prompt", system_prompt,
+            "--permission-prompts", "none",
+            "-p",
+            "--output-format", "text",
+        ])
 
         try:
-            proc = subprocess.Popen(
-                cmd,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1,  # line-buffered
-            )
+            with tempfile.TemporaryDirectory(prefix="martinus-claude-") as neutral_cwd:
+                proc = subprocess.run(
+                    cmd,
+                    input=user_prompt,
+                    capture_output=True,
+                    text=True,
+                    timeout=self._per_call_timeout,
+                    cwd=neutral_cwd,
+                )
+        except subprocess.TimeoutExpired:
+            return "", "claude-code", f"claude CLI timed out after {self._per_call_timeout}s"
         except FileNotFoundError:
             return "", "claude-code", (
                 f"claude CLI binary not found at {self._binary!r}. "
                 "Install Claude Code or set MARTINUS_CLAUDE_BINARY."
-            ), 0, 0
-
-        # Write the prompt on stdin and close so the CLI actually starts work.
+            )
+        model_name = "claude-code"
+        if proc.returncode != 0:
+            return "", model_name, f"claude CLI exited nonzero: {proc.stderr.strip()[:400]}"
+        content = proc.stdout.strip()
+        if not content:
+            return "", model_name, f"claude CLI returned an empty response. stderr: {proc.stderr.strip()[:200]}"
         try:
-            proc.stdin.write(merged_prompt)
-            proc.stdin.close()
-        except BrokenPipeError:
+            on_token(content)
+        except Exception:
             pass
 
-        # Drain stderr in a background thread so it can't fill the pipe and
-        # deadlock the parent.
-        stderr_chunks: list[str] = []
-
-        def _drain_stderr() -> None:
-            try:
-                for line in proc.stderr:
-                    stderr_chunks.append(line)
-            except Exception:
-                pass
-
-        stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
-        stderr_thread.start()
-
-        assembled: list[str] = []
-        seen_texts: set[str] = set()
-        model_name = "claude-code"
-        prompt_tokens = 0
-        completion_tokens = 0
-        deadline = time.monotonic() + self._per_call_timeout
-        try:
-            for raw in proc.stdout:
-                if time.monotonic() > deadline:
-                    proc.terminate()
-                    return "".join(assembled), model_name, (
-                        f"claude CLI stream exceeded {self._per_call_timeout}s"
-                    ), prompt_tokens, completion_tokens
-                line = raw.strip()
-                if not line:
-                    continue
-                try:
-                    event = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(event, dict):
-                    continue
-                etype = event.get("type", "")
-                if etype == "assistant":
-                    message = event.get("message", {})
-                    if isinstance(message, dict):
-                        # Record model name if the CLI reports one.
-                        m = message.get("model")
-                        if m:
-                            model_name = str(m)
-                        # `content` is a list of content-blocks; forward each
-                        # new text segment as a token. Claude emits
-                        # incrementally-growing text blocks, so we dedupe on
-                        # the full text and forward only the delta.
-                        content_blocks = message.get("content", [])
-                        if isinstance(content_blocks, list):
-                            for block in content_blocks:
-                                if not isinstance(block, dict):
-                                    continue
-                                if block.get("type") != "text":
-                                    continue
-                                text = str(block.get("text", ""))
-                                if not text or text in seen_texts:
-                                    continue
-                                # Find the longest previous prefix so we only
-                                # emit the delta rather than the whole growing
-                                # message every time.
-                                delta = text
-                                for prev in list(seen_texts):
-                                    if text.startswith(prev):
-                                        delta = text[len(prev):]
-                                        break
-                                seen_texts.add(text)
-                                if delta:
-                                    try:
-                                        on_token(delta)
-                                    except Exception:
-                                        pass
-                                    assembled.append(delta)
-                elif etype == "result":
-                    # Terminal envelope. `result` field is authoritative when
-                    # present; fall back to what we accumulated from deltas.
-                    final = event.get("result")
-                    # Extract token usage + cost from the terminal envelope.
-                    usage_block = event.get("usage") or {}
-                    if isinstance(usage_block, dict):
-                        prompt_tokens = (
-                            usage_block.get("input_tokens", 0)
-                            + usage_block.get("cache_read_input_tokens", 0)
-                            + usage_block.get("cache_creation_input_tokens", 0)
-                        )
-                        completion_tokens = usage_block.get("output_tokens", 0)
-                    _cost = float(event.get("total_cost_usd") or 0.0)
-                    if _cost:
-                        self._last_cost_usd = getattr(self, "_last_cost_usd", 0.0) + _cost
-                    if isinstance(final, str) and final:
-                        # If the assembled deltas somehow disagree with the
-                        # authoritative result, prefer result but keep any
-                        # extra we already streamed.
-                        assembled_full = "".join(assembled)
-                        if not assembled_full or assembled_full != final:
-                            missing = final[len(assembled_full):] if final.startswith(assembled_full) else ""
-                            if missing:
-                                try:
-                                    on_token(missing)
-                                except Exception:
-                                    pass
-                                assembled.append(missing)
-                            elif not assembled_full:
-                                # Nothing came through deltas — emit the whole
-                                # result as one token so downstream code sees
-                                # at least one on_token call.
-                                try:
-                                    on_token(final)
-                                except Exception:
-                                    pass
-                                assembled.append(final)
-                    is_error = bool(event.get("is_error"))
-                    if is_error:
-                        err_msg = str(event.get("terminal_reason") or event.get("stop_reason") or "unknown")
-                        return (
-                            "".join(assembled), model_name,
-                            f"claude CLI reported error: {err_msg}",
-                            prompt_tokens, completion_tokens,
-                        )
-        except Exception as exc:
-            return (
-                "".join(assembled), model_name,
-                f"claude CLI stream read failed: {exc}",
-                prompt_tokens, completion_tokens,
-            )
-
-        rc = proc.wait(timeout=5)
-        stderr_thread.join(timeout=1)
-        if rc != 0:
-            err = "".join(stderr_chunks).strip()[:400] or f"exit code {rc}"
-            return "".join(assembled), model_name, f"claude CLI exited nonzero: {err}", prompt_tokens, completion_tokens
-
         self._cache.invalidate("health")
-        return "".join(assembled), model_name, "", prompt_tokens, completion_tokens
+        return content, model_name, ""
 
 
 def from_env() -> Router:
