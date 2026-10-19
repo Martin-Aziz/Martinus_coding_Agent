@@ -7153,6 +7153,126 @@ const Clock3 = createLucideIcon("Clock3", [
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
+const CodeXml = createLucideIcon("CodeXml", [
+  ["path", { d: "m18 16 4-4-4-4", key: "1inbqp" }],
+  ["path", { d: "m6 8-4 4 4 4", key: "15zrgr" }],
+  ["path", { d: "m14.5 4-5 16", key: "e7oirm" }]
+]);
+/**
+ * @license lucide-react v0.468.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const ExternalLink = createLucideIcon("ExternalLink", [
+  ["path", { d: "M15 3h6v6", key: "1q9fwt" }],
+  ["path", { d: "M10 14 21 3", key: "gplh6r" }],
+  ["path", { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6", key: "a6xqqp" }]
+]);
+/**
+ * @license lucide-react v0.468.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const Eye = createLucideIcon("Eye", [
+  [
+    "path",
+    {
+      d: "M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0",
+      key: "1nclc0"
+    }
+  ],
+  ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
+]);
+/**
+ * @license lucide-react v0.468.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const FileCode2 = createLucideIcon("FileCode2", [
+  ["path", { d: "M4 22h14a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v4", key: "1pf5j1" }],
+  ["path", { d: "M14 2v4a2 2 0 0 0 2 2h4", key: "tnqrlb" }],
+  ["path", { d: "m5 12-3 3 3 3", key: "oke12k" }],
+  ["path", { d: "m9 18 3-3-3-3", key: "112psh" }]
+]);
+/**
+ * @license lucide-react v0.468.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const FileImage = createLucideIcon("FileImage", [
+  ["path", { d: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z", key: "1rqfz7" }],
+  ["path", { d: "M14 2v4a2 2 0 0 0 2 2h4", key: "tnqrlb" }],
+  ["circle", { cx: "10", cy: "12", r: "2", key: "737tya" }],
+  ["path", { d: "m20 17-1.296-1.296a2.41 2.41 0 0 0-3.408 0L9 22", key: "wt3hpn" }]
+]);
+/**
+ * @license lucide-react v0.468.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const FileJson = createLucideIcon("FileJson", [
+  ["path", { d: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z", key: "1rqfz7" }],
+  ["path", { d: "M14 2v4a2 2 0 0 0 2 2h4", key: "tnqrlb" }],
+  [
+    "path",
+    { d: "M10 12a1 1 0 0 0-1 1v1a1 1 0 0 1-1 1 1 1 0 0 1 1 1v1a1 1 0 0 0 1 1", key: "1oajmo" }
+  ],
+  [
+    "path",
+    { d: "M14 18a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1 1 1 0 0 1-1-1v-1a1 1 0 0 0-1-1", key: "mpwhp6" }
+  ]
+]);
+/**
+ * @license lucide-react v0.468.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const FileText = createLucideIcon("FileText", [
+  ["path", { d: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z", key: "1rqfz7" }],
+  ["path", { d: "M14 2v4a2 2 0 0 0 2 2h4", key: "tnqrlb" }],
+  ["path", { d: "M10 9H8", key: "b1mrlr" }],
+  ["path", { d: "M16 13H8", key: "t4e002" }],
+  ["path", { d: "M16 17H8", key: "z1uh3a" }]
+]);
+/**
+ * @license lucide-react v0.468.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const File = createLucideIcon("File", [
+  ["path", { d: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z", key: "1rqfz7" }],
+  ["path", { d: "M14 2v4a2 2 0 0 0 2 2h4", key: "tnqrlb" }]
+]);
+/**
+ * @license lucide-react v0.468.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const FlaskConical = createLucideIcon("FlaskConical", [
+  [
+    "path",
+    {
+      d: "M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2",
+      key: "18mbvz"
+    }
+  ],
+  ["path", { d: "M6.453 15h11.094", key: "3shlmq" }],
+  ["path", { d: "M8.5 2h7", key: "csnxdl" }]
+]);
+/**
+ * @license lucide-react v0.468.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
 const FolderOpen = createLucideIcon("FolderOpen", [
   [
     "path",
@@ -7376,9 +7496,12 @@ function MartinusLogo() {
   ] });
 }
 function PhaseCardView({ card }) {
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpen] = React.useState(card.status === "streaming");
   const [now, setNow] = React.useState(() => performance.now());
   const color = phaseColors[card.phase] ?? "#64748b";
+  React.useEffect(() => {
+    setOpen(card.status === "streaming");
+  }, [card.status]);
   React.useEffect(() => {
     if (card.status !== "streaming") return;
     const timer = window.setInterval(() => setNow(performance.now()), 1e3);
@@ -7457,6 +7580,19 @@ function App() {
   const [verificationSummary, setVerificationSummary] = React.useState(null);
   const [files, setFiles] = React.useState([]);
   const [showResults, setShowResults] = React.useState(false);
+  const [previewToken, setPreviewToken] = React.useState("");
+  const [previewError, setPreviewError] = React.useState("");
+  const [previewLoading, setPreviewLoading] = React.useState(false);
+  const [previewContainsPython, setPreviewContainsPython] = React.useState(false);
+  const [reloadCounter, setReloadCounter] = React.useState(0);
+  const [previewTab, setPreviewTab] = React.useState("preview");
+  const [narrowPane, setNarrowPane] = React.useState("preview");
+  const [runOutcome, setRunOutcome] = React.useState("");
+  const [selectedFile, setSelectedFile] = React.useState(null);
+  const [selectedPath, setSelectedPath] = React.useState("");
+  const [testsConfirm, setTestsConfirm] = React.useState(false);
+  const [testsLoading, setTestsLoading] = React.useState(false);
+  const [testsResult, setTestsResult] = React.useState(null);
   const [busy, setBusy] = React.useState(false);
   const [statusText, setStatusText] = React.useState("idle");
   const [serviceMessage, setServiceMessage] = React.useState("");
@@ -7599,6 +7735,73 @@ function App() {
   async function loadFiles(targetWorkspace = workspace) {
     setFiles(await fetchWorkspaceFiles(targetWorkspace));
   }
+  async function refreshPreview(targetWorkspace = workspace) {
+    if (!targetWorkspace) return;
+    setPreviewLoading(true);
+    setPreviewError("");
+    try {
+      const response = await fetch(`${API}/v1/preview/session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspacePath: targetWorkspace })
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const session = await response.json();
+      setPreviewToken(session.token);
+      const hasPython = session.files.some((path) => path.toLowerCase().endsWith(".py"));
+      setPreviewContainsPython(hasPython);
+      setPreviewTab(session.entry || !hasPython ? "preview" : "tests");
+      setReloadCounter((counter) => counter + 1);
+    } catch (err) {
+      setPreviewToken("");
+      setPreviewError(String(err));
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+  async function readWorkspaceFile(path) {
+    const ext = path.split(".").pop()?.toLowerCase() ?? "";
+    if (!["txt", "md", "py", "js", "mjs", "css", "html", "htm", "json", "svg", "ts", "tsx", "yaml", "yml", "toml", "rs"].includes(ext)) {
+      setSelectedFile({ path, content: "This file type is not available in the text preview." });
+      return;
+    }
+    setSelectedFile({ path, content: "Loading file…" });
+    try {
+      const url = new URL(`${API}/v1/workspace/read`);
+      url.searchParams.set("workspacePath", workspace);
+      url.searchParams.set("path", path);
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(await response.text());
+      const result = await response.json();
+      setSelectedFile({ path, content: result.content + (result.truncated ? "\n\n[Content truncated]" : "") });
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+  function selectWorkspaceFile(path) {
+    setSelectedPath(path);
+    setPreviewTab("code");
+    setSelectedFile(null);
+    void readWorkspaceFile(path);
+  }
+  async function runWorkspaceTests() {
+    setTestsConfirm(false);
+    setTestsLoading(true);
+    setTestsResult(null);
+    try {
+      const response = await fetch(`${API}/v1/workspace/tests`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspacePath: workspace })
+      });
+      if (!response.ok) throw new Error(await response.text());
+      setTestsResult(await response.json());
+    } catch (err) {
+      setTestsResult({ ran: true, passed: false, timedOut: false, output: String(err), framework: null, durationMs: 0 });
+    } finally {
+      setTestsLoading(false);
+    }
+  }
   function absoluteWorkspacePath(entry) {
     const base = workspace.replace(/\/+$/, "");
     return entry ? `${base}/${entry.path}` : base;
@@ -7632,7 +7835,12 @@ function App() {
       const selected = await invoke("choose_workspace", { current: workspace });
       if (selected) {
         setWorkspace(selected);
-        setFiles([]);
+        setFiles(await fetchWorkspaceFiles(selected));
+        setShowResults(true);
+        setSelectedFile(null);
+        setSelectedPath("");
+        setTestsResult(null);
+        await refreshPreview(selected);
       }
     } catch (err) {
       setError(String(err));
@@ -7643,6 +7851,15 @@ function App() {
     setVerificationSummary(null);
     setFiles([]);
     setShowResults(false);
+    setPreviewToken("");
+    setPreviewError("");
+    setPreviewContainsPython(false);
+    setRunOutcome("");
+    setSelectedFile(null);
+    setSelectedPath("");
+    setPreviewTab("preview");
+    setTestsResult(null);
+    setTestsConfirm(false);
     setPhaseStates(Object.fromEntries(phases.map((phase) => [phase, "pending"])));
   }
   function showPreparingPhase() {
@@ -7701,6 +7918,9 @@ ${currentTask}`
     setVerificationSummary(null);
     setFiles([]);
     setShowResults(false);
+    setSelectedFile(null);
+    setSelectedPath("");
+    setPreviewTab("preview");
     setError("");
     setStatusText("idle");
   }
@@ -7938,6 +8158,8 @@ ${currentTask}`
               setVerificationSummary(event.verification);
             }
             setStatusText("done");
+            setRunOutcome(event.status === "success" || event.success === true ? "completed" : event.status === "aborted" ? "partial" : "failed");
+            await refreshPreview(runWorkspace);
           }
         }
       }
@@ -7959,6 +8181,7 @@ ${currentTask}`
       } : card));
       setError(msg);
       setStatusText("error");
+      if (runWorkspace) setRunOutcome("failed");
     } finally {
       stopTokenFlush();
       try {
@@ -7980,6 +8203,22 @@ ${currentTask}`
   const canRun = Boolean(task.trim()) && !busy;
   const runDisabledReason = !task.trim() ? "Describe what you want Martinus to build first." : busy ? "Martinus is already running." : "";
   const hasPreview = files.some((file) => !file.is_dir && file.path.toLowerCase() === "index.html");
+  const hasPythonFiles = previewContainsPython || files.some((file) => !file.is_dir && file.path.toLowerCase().endsWith(".py"));
+  const previewStatusLabel = busy ? "Running" : runOutcome === "completed" ? "Completed" : runOutcome === "partial" ? "Partial" : runOutcome === "failed" ? "Failed" : "Ready";
+  const previewStatusTone = busy ? "running" : runOutcome;
+  const streamedFilesWritten = Array.from(new Set(phaseCards.flatMap((card) => card.filesWritten ?? [])));
+  const selectedFileExtension = selectedPath.split(".").pop()?.toLowerCase() ?? "";
+  const canShowSelectedFile = ["txt", "md", "py", "js", "mjs", "css", "html", "htm", "json", "svg", "ts", "tsx", "yaml", "yml", "toml", "rs"].includes(selectedFileExtension);
+  function fileTypeIcon(file) {
+    if (file.is_dir) return /* @__PURE__ */ jsxRuntimeExports.jsx(FolderOpen, { size: 15 });
+    const extension = file.path.split(".").pop()?.toLowerCase() ?? "";
+    if (["html", "htm", "py"].includes(extension)) return /* @__PURE__ */ jsxRuntimeExports.jsx(FileCode2, { size: 15 });
+    if (["css", "js", "mjs", "ts", "tsx", "rs"].includes(extension)) return /* @__PURE__ */ jsxRuntimeExports.jsx(CodeXml, { size: 15 });
+    if (["json", "yaml", "yml", "toml"].includes(extension)) return /* @__PURE__ */ jsxRuntimeExports.jsx(FileJson, { size: 15 });
+    if (["png", "jpg", "jpeg", "gif", "webp", "svg", "ico"].includes(extension)) return /* @__PURE__ */ jsxRuntimeExports.jsx(FileImage, { size: 15 });
+    if (["txt", "md"].includes(extension)) return /* @__PURE__ */ jsxRuntimeExports.jsx(FileText, { size: 15 });
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(File, { size: 15 });
+  }
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { className: "app-shell", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "topbar", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "topbar-title", children: /* @__PURE__ */ jsxRuntimeExports.jsx(MartinusLogo, {}) }),
@@ -8010,75 +8249,149 @@ ${currentTask}`
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pipeline-note", children: hardwareProfile === "desktop" ? "Fast mode runs Discovery and Implementation. Automatic file and syntax checks still run after generation." : hardwareProfile === "low" ? "Verified mode adds the model-led Verification phase and automatic file and syntax checks." : "Full pipeline mode runs all six agent phases plus automatic file and syntax checks." }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "chat-area", children: [
       error && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "error-banner", children: error }),
-      (taskHistory.length > 0 || referenceFiles.length > 0) && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "session-card", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Session context" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-          taskHistory.length,
-          " request",
-          taskHistory.length === 1 ? "" : "s",
-          " in this session"
-        ] }),
-        referenceFiles.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-          referenceFiles.length,
-          " attached spec/reference file",
-          referenceFiles.length === 1 ? "" : "s"
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: sessionId })
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "narrow-pane-switch", role: "tablist", "aria-label": "Workspace panels", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: narrowPane === "progress" ? "active" : "", onClick: () => setNarrowPane("progress"), children: "Progress & Files" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: narrowPane === "preview" ? "active" : "", onClick: () => setNarrowPane("preview"), children: "Preview" })
       ] }),
-      phaseCards.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "empty-run", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: taskHistory.length > 0 ? "Ready for a follow-up" : "Ready" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: taskHistory.length > 0 ? "Ask for a change, question, or improvement. Martinus will include this session history and the selected workspace context." : "Describe what you want to build. Martinus will run the local coding pipeline and write generated files into the selected workspace." })
-      ] }) : phaseCards.map((card, index) => /* @__PURE__ */ jsxRuntimeExports.jsx(PhaseCardView, { card }, `${card.phase}-${index}`)),
-      verificationSummary && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `verification-card ${verificationSummary.passed ? "passed" : "failed"}`, children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "verification-title", children: [
-          verificationSummary.passed ? /* @__PURE__ */ jsxRuntimeExports.jsx(CircleCheck, { size: 18 }) : /* @__PURE__ */ jsxRuntimeExports.jsx(CircleX, { size: 18 }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: verificationSummary.passed ? "Verification passed" : "Verification needs attention" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: "Observable file and syntax checks—not hidden model reasoning." })
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `workspace-layout show-${narrowPane}`, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", { className: "workspace-progress-pane", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "progress-section", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "pane-section-heading", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Run progress" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "count-badge", children: phaseCards.length })
+            ] }),
+            phaseCards.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "progress-empty", children: taskHistory.length > 0 ? "Ready for a follow-up" : "No run activity yet" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "phase-card-list", children: phaseCards.map((card, index) => /* @__PURE__ */ jsxRuntimeExports.jsx(PhaseCardView, { card }, `${card.phase}-${index}`)) }),
+            (taskHistory.length > 0 || referenceFiles.length > 0) && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "session-context", title: sessionId, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+                taskHistory.length,
+                " request",
+                taskHistory.length === 1 ? "" : "s"
+              ] }),
+              referenceFiles.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+                referenceFiles.length,
+                " attached reference",
+                referenceFiles.length === 1 ? "" : "s"
+              ] })
+            ] }),
+            verificationSummary && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `verification-card ${verificationSummary.passed ? "passed" : "failed"}`, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "verification-title", children: [
+                verificationSummary.passed ? /* @__PURE__ */ jsxRuntimeExports.jsx(CircleCheck, { size: 16 }) : /* @__PURE__ */ jsxRuntimeExports.jsx(CircleX, { size: 16 }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: verificationSummary.passed ? "Verification passed" : "Verification needs attention" })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "verification-stats", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+                  verificationSummary.generatedFiles.length,
+                  " files"
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+                  verificationSummary.checks.filter((check) => check.ok).length,
+                  "/",
+                  verificationSummary.checks.length,
+                  " checks"
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: verificationSummary.missingFiles.length === 0 ? "No missing files" : `${verificationSummary.missingFiles.length} missing` })
+              ] })
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "files-section", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "pane-section-heading", title: workspace || "Workspace not selected", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Files" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "count-badge", children: files.length }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "icon-button workspace-reveal", onClick: () => revealInFinder(absoluteWorkspacePath()), title: "Open workspace", "aria-label": "Open workspace", children: /* @__PURE__ */ jsxRuntimeExports.jsx(FolderOpen, { size: 15 }) })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "workspace-file-list", children: [
+              files.map((file) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `workspace-file-row ${selectedPath === file.path ? "selected" : ""}`, children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "workspace-file-select", onClick: () => selectWorkspaceFile(file.path), title: file.path, children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "workspace-file-icon", children: fileTypeIcon(file) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "workspace-file-name", children: file.name })
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "file-reveal-button", onClick: () => revealInFinder(absoluteWorkspacePath(file)), title: "Reveal in Finder", "aria-label": `Reveal ${file.name}`, children: /* @__PURE__ */ jsxRuntimeExports.jsx(ExternalLink, { size: 13 }) })
+              ] }, file.path)),
+              files.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "files-empty", children: showResults ? "No files found" : "Files will appear here" })
+            ] })
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "verification-stats", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-            verificationSummary.generatedFiles.length,
-            " generated file",
-            verificationSummary.generatedFiles.length === 1 ? "" : "s"
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "workspace-preview-pane", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "preview-toolbar", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "preview-tabs", role: "tablist", "aria-label": "Preview content", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { role: "tab", "aria-selected": previewTab === "preview", className: previewTab === "preview" ? "active" : "", onClick: () => setPreviewTab("preview"), children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Eye, { size: 14 }),
+                "Preview"
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { role: "tab", "aria-selected": previewTab === "code", className: previewTab === "code" ? "active" : "", onClick: () => setPreviewTab("code"), children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(CodeXml, { size: 14 }),
+                "Code"
+              ] }),
+              hasPythonFiles && /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { role: "tab", "aria-selected": previewTab === "tests", className: previewTab === "tests" ? "active" : "", onClick: () => setPreviewTab("tests"), children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(FlaskConical, { size: 14 }),
+                "Tests"
+              ] })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "preview-selected-name", title: selectedPath, children: previewTab === "code" ? selectedPath || "Select a file" : "" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "preview-toolbar-actions", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "icon-button", onClick: () => {
+                void refreshPreview();
+              }, disabled: !showResults || previewLoading, title: "Reload preview", "aria-label": "Reload preview", children: /* @__PURE__ */ jsxRuntimeExports.jsx(RefreshCw, { size: 15 }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "icon-button", onClick: previewGeneratedApp, disabled: !hasPreview, title: "Open in browser", "aria-label": "Open in browser", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ExternalLink, { size: 15 }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: `run-status ${previewStatusTone}`, children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("i", {}),
+                previewStatusLabel
+              ] })
+            ] })
           ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-            verificationSummary.checks.filter((check) => check.ok).length,
-            "/",
-            verificationSummary.checks.length,
-            " executable checks passed"
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: verificationSummary.missingFiles.length === 0 ? "No requested files missing" : `${verificationSummary.missingFiles.length} requested file(s) missing` })
-        ] }),
-        verificationSummary.checks.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "verification-checks", children: verificationSummary.checks.map((check) => /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: check.ok ? "ok" : "bad", title: check.error || check.detail || check.kind, children: [
-          check.ok ? "✓" : "×",
-          " ",
-          check.file,
-          " · ",
-          check.kind
-        ] }, `${check.file}-${check.kind}`)) })
-      ] }),
-      showResults && files.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "summary-card", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "summary-header", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Generated files" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: workspace })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { onClick: () => revealInFinder(absoluteWorkspacePath()), children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(FolderOpen, { size: 15 }),
-            "Open workspace"
-          ] }),
-          hasPreview && /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { onClick: previewGeneratedApp, children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Play, { size: 15 }),
-            "Preview app"
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `preview-content ${previewTab}`, children: [
+            previewTab === "preview" && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "preview-body", children: busy ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "preview-placeholder running-placeholder", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "preview-skeleton", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("i", {}),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("i", {}),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("i", {})
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Your app will appear here" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Run a task to generate it." }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: streamedFilesWritten.length ? `Files written: ${streamedFilesWritten.length}` : "Waiting for files…" })
+            ] }) : !showResults ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "preview-placeholder", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Your app will appear here" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Run a task to generate it." })
+            ] }) : previewLoading ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "preview-placeholder", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Loading…" }) }) : previewError ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "preview-placeholder preview-error-state", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Preview could not be loaded" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: previewError }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "retry-button", onClick: () => {
+                void refreshPreview();
+              }, children: "Retry" })
+            ] }) : hasPreview && previewToken ? /* @__PURE__ */ jsxRuntimeExports.jsx("iframe", { title: "Generated project preview", sandbox: "allow-scripts", src: `${API}/preview/${previewToken}/index.html?v=${reloadCounter}` }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "preview-placeholder", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "No index.html in this project" }),
+              hasPythonFiles && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Open the Tests tab to run the generated Python tests." })
+            ] }) }),
+            previewTab === "code" && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "code-view", children: selectedFile ? /* @__PURE__ */ jsxRuntimeExports.jsx("pre", { children: selectedFile.content }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "preview-placeholder", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: selectedPath && !canShowSelectedFile ? "This file type is not available in the text preview." : "Select a file to view its contents." }) }) }),
+            previewTab === "tests" && hasPythonFiles && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "tests-view", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "tests-card", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "tests-title", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(FlaskConical, { size: 17 }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "Python tests" })
+              ] }),
+              !testsConfirm ? /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "run-tests-button", onClick: () => setTestsConfirm(true), disabled: testsLoading, children: "Run tests" }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "test-confirm", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "This runs the generated Python tests on your computer with your user permissions. Continue?" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => {
+                  void runWorkspaceTests();
+                }, children: "Continue" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => setTestsConfirm(false), children: "Cancel" })
+              ] }),
+              testsLoading && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "test-running", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(LoaderCircle, { size: 14, className: "spin" }),
+                "Running tests…"
+              ] }),
+              testsResult && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: `test-result ${testsResult.passed ? "passed" : testsResult.ran ? "failed" : ""}`, children: [
+                  !testsResult.ran ? "No tests found" : testsResult.timedOut ? "Timed out" : testsResult.passed ? "Passed" : "Failed",
+                  testsResult.framework ? ` · ${testsResult.framework}` : "",
+                  " · ",
+                  testsResult.durationMs,
+                  " ms"
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("pre", { className: "test-output", children: testsResult.output })
+              ] })
+            ] }) })
           ] })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "file-list", children: files.map((file) => /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { onClick: () => revealInFinder(absoluteWorkspacePath(file)), children: [
-          file.is_dir ? "Folder" : "File",
-          ": ",
-          file.path
-        ] }, file.path)) })
+        ] })
       ] })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("footer", { className: "input-bar", children: [
@@ -8257,4 +8570,4 @@ ${currentTask}`
 client.createRoot(document.getElementById("root")).render(
   /* @__PURE__ */ jsxRuntimeExports.jsx(React.StrictMode, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) })
 );
-//# sourceMappingURL=index-CIse4nTR.js.map
+//# sourceMappingURL=index-DDcXxP2z.js.map
